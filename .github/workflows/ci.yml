@@ -1,9 +1,7 @@
-# Runs on every push/PR to main so you can verify GitHub Actions without creating a release tag.
+# Runs on pull requests targeting main so you can verify builds before merging.
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
