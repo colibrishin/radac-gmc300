@@ -27,7 +27,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: gmc_recovered-windows-x64.exe
+            artifact_name: gmc_recovered-windows-x64
             artifact_path: build/gmc_recovered.exe
           - os: ubuntu-22.04
             artifact_name: gmc_recovered-linux-x64
@@ -142,9 +142,12 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          cp gmc_recovered-windows-x64.exe/gmc_recovered.exe ./gmc_recovered-windows-x64.exe
-          cp gmc_recovered-linux-x64/gmc_recovered ./gmc_recovered-linux-x64
-          cp gmc_recovered-macos-arm64/gmc_recovered ./gmc_recovered-macos-arm64
+          cp gmc_recovered-windows-x64/gmc_recovered.exe ./gmc_recovered-windows-x64.exe
+          cp gmc_recovered-linux-x64/gmc_recovered ./gmc_recovered-linux-x64.bin
+          cp gmc_recovered-macos-arm64/gmc_recovered ./gmc_recovered-macos-arm64.bin
+          rm -rf gmc_recovered-linux-x64 gmc_recovered-macos-arm64
+          mv gmc_recovered-linux-x64.bin gmc_recovered-linux-x64
+          mv gmc_recovered-macos-arm64.bin gmc_recovered-macos-arm64
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
