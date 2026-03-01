@@ -152,17 +152,20 @@ if(UNIX AND NOT WIN32)
   find_package(Threads REQUIRED)
   target_link_libraries(gmc_recovered PRIVATE Threads::Threads)
 endif()
-# Windows: target Windows 7+ so Asio/WinAPI headers are satisfied
+# Windows: target Windows 7+ so Asio/WinAPI headers are satisfied; link Winsock (WSAStartup/WSACleanup)
 if(MSVC OR (WIN32 AND (MINGW OR CYGWIN)))
   target_compile_definitions(gmc_recovered PRIVATE _WIN32_WINNT=0x0601)
+  target_link_libraries(gmc_recovered PRIVATE ws2_32)
 endif()
 
 if(GMC_USE_BOINC)
   target_include_directories(gmc_recovered PRIVATE ${BOINC_INCLUDE_DIR})
   target_compile_definitions(gmc_recovered PRIVATE GMC_USE_BOINC=1)
-  target_link_libraries(gmc_recovered PRIVATE ${BOINC_LIB})
+  # Link order: libboincapi first (it depends on libboinc); libboinc second so the linker resolves api's undefined refs.
   if(DEFINED BOINC_API_LIB)
-    target_link_libraries(gmc_recovered PRIVATE ${BOINC_API_LIB})
+    target_link_libraries(gmc_recovered PRIVATE ${BOINC_API_LIB} ${BOINC_LIB})
+  else()
+    target_link_libraries(gmc_recovered PRIVATE ${BOINC_LIB})
   endif()
   # Match prebuilt BOINC libs (built as Release with /MT and _ITERATOR_DEBUG_LEVEL=0).
   if(MSVC)
