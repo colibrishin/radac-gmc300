@@ -1,0 +1,11 @@
+# Force C++ mode and C++20; strip any -std=c++20 that was added for C (avoids "not allowed with 'C'").
+# Include paths for third_party so IDE finds boost/asio and boost/system (CMake adds these when building).
+CompileFlags:
+  Compiler: clang++
+  Remove:
+    - -std=c++20
+  Add:
+    - -xc++
+    - -std=c++20
+    - -Ithird_party/asio/include
+    - -Ithird_party/system/include
