@@ -8,15 +8,143 @@ on:
     branches: [main]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-standalone:
+    name: Build (standalone) ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Build (standalone)
+      - name: Build (standalone, Linux)
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j$(nproc)
+
+      - name: Build (standalone, macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: Setup MSYS2 (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-cmake
+
+      - name: Build (standalone, Windows)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          cmake -B build -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build -j4
+
+  build-boinc:
+    name: Build (BOINC) ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # --- Linux ---
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential autoconf automake libtool pkg-config libssl-dev libzip-dev
+
+      - name: Build BOINC (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cd third_party/boinc
+          autoreconf -i
+          ./configure --disable-server --disable-client --disable-manager --enable-libraries
+          make -j$(nproc)
+          [ ! lib/.libs/libboinc.a -ef lib/libboinc.a ] && cp lib/.libs/libboinc.a lib/libboinc.a || true
+          [ ! api/.libs/libboinc_api.a -ef lib/libboincapi.a ] && cp api/.libs/libboinc_api.a lib/libboincapi.a || true
+          cd ../..
+
+      - name: Build gmc_recovered (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cmake -B build -S . -DGMC_USE_BOINC=ON
+          cmake --build build -j$(nproc)
+
+      # --- macOS ---
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          brew install autoconf automake libtool pkg-config openssl libzip cmake
+
+      - name: Build BOINC (macOS)
+        if: matrix.os == 'macos-14'
+        env:
+          PKG_CONFIG_PATH: "$(brew --prefix openssl)/lib/pkgconfig:$(brew --prefix libzip)/lib/pkgconfig"
+        run: |
+          cd third_party/boinc
+          autoreconf -i
+          ./configure --disable-server --disable-client --disable-manager --enable-libraries
+          make -j$(sysctl -n hw.ncpu)
+          [ ! lib/.libs/libboinc.a -ef lib/libboinc.a ] && cp lib/.libs/libboinc.a lib/libboinc.a || true
+          [ ! api/.libs/libboinc_api.a -ef lib/libboincapi.a ] && cp api/.libs/libboinc_api.a lib/libboincapi.a || true
+          cd ../..
+
+      - name: Build gmc_recovered (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          cmake -B build -S . -DGMC_USE_BOINC=ON
+          cmake --build build -j$(sysctl -n hw.ncpu)
+
+      # --- Windows ---
+      - name: Setup MSYS2 (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-cmake
+
+      - name: Build BOINC (Windows MinGW)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          cp third_party/boinc/win_build/win-config.h third_party/boinc/win_build/config.h
+          cd third_party/boinc/lib
+          make -f Makefile.mingw BOINC_SRC=..
+          cp libboinc_api.a libboincapi.a
+          cd ../../..
+
+      - name: Build gmc_recovered (Windows MinGW)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          cmake -B build -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DGMC_USE_BOINC=ON \
+            -DBOINC_LIB=$PWD/third_party/boinc/lib/libboinc.a \
+            -DBOINC_API_LIB=$PWD/third_party/boinc/lib/libboincapi.a
+          cmake --build build -j4
