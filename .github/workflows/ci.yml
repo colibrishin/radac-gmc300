@@ -47,7 +47,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          cmake -B build -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -G "MinGW Makefiles" \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j4
 
@@ -86,7 +86,7 @@ jobs:
       - name: Build gmc_recovered (Linux)
         if: matrix.os == 'ubuntu-22.04'
         run: |
-          cmake -B build -S . -DGMC_USE_BOINC=ON
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DGMC_USE_BOINC=ON
           cmake --build build -j$(nproc)
 
       # --- macOS ---
@@ -111,7 +111,7 @@ jobs:
       - name: Build gmc_recovered (macOS)
         if: matrix.os == 'macos-14'
         run: |
-          cmake -B build -S . -DGMC_USE_BOINC=ON
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DGMC_USE_BOINC=ON
           cmake --build build -j$(sysctl -n hw.ncpu)
 
       # --- Windows ---
@@ -140,7 +140,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          cmake -B build -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -G "MinGW Makefiles" \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DGMC_USE_BOINC=ON \
             -DBOINC_LIB=$PWD/third_party/boinc/lib/libboinc.a \

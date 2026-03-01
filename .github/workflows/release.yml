@@ -66,7 +66,7 @@ jobs:
       - name: Build gmc_recovered (Linux)
         if: matrix.os == 'ubuntu-22.04'
         run: |
-          cmake -B build -S . -DGMC_USE_BOINC=ON
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DGMC_USE_BOINC=ON
           cmake --build build -j$(nproc)
 
       # --- macOS: build BOINC (autotools) then gmc_recovered with GMC_USE_BOINC=ON ---
@@ -91,7 +91,7 @@ jobs:
       - name: Build gmc_recovered (macOS)
         if: matrix.os == 'macos-14'
         run: |
-          cmake -B build -S . -DGMC_USE_BOINC=ON
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DGMC_USE_BOINC=ON
           cmake --build build -j$(sysctl -n hw.ncpu)
 
       # --- Windows: build BOINC (MinGW Makefile.mingw) then gmc_recovered with MinGW ---
