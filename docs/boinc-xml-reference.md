@@ -86,11 +86,41 @@ Path: `BOINCdata/slots/<N>/boinc_task_state.xml`. Task state (fraction_done, che
 
 ---
 
+## rad_report_xml (trickle-up payload)
+
+The original program calls **boinc_send_trickle_up("rad_report_xml", xml)** with an XML string. One payload contains **one** `<sample>...</sample>` per send; samples are queued and sent when both a pending count and a time interval are met (see docs/original-program-behaviour.md).
+
+**Single-sample template:**
+
+```xml
+<sample><timer>%u</timer>
+<counter>%u</counter>
+<timestamp>%u-%u-%u %u:%u:%u</timestamp>
+<sensor_revision_int>%i</sensor_revision_int>
+<sample_type>%s</sample_type>
+<vid_pid_int>%u</vid_pid_int>
+</sample>
+```
+
+| Element | Value / meaning |
+|--------|------------------|
+| **timer** | Cumulative ms from run start. |
+| **counter** | Time-weighted counter (CPM × interval in minutes). |
+| **timestamp** | `YYYY-MM-DD HH:MM:SS` (local time). |
+| **sensor_revision_int** | `0`. |
+| **sample_type** | `f` (first), `r` (resume or long gap), or `n` (normal). |
+| **vid_pid_int** | Unsigned int (e.g. 0 or device id). |
+
+**Send rules:** See docs/original-program-behaviour.md and docs/phase4-server.md §3.3.
+
+---
+
 ## Summary
 
-| File            | Root element     | Section / path used by app        | Keys read                    |
-|-----------------|------------------|-----------------------------------|------------------------------|
-| **gmc.xml**     | `<gmc>`          | gmc → comsettings                | portnumber, baud, bits, parity, stopbits |
+| File / payload   | Root element     | Section / path used by app        | Keys read                    |
+|------------------|------------------|-----------------------------------|------------------------------|
+| **gmc.xml**      | `<gmc>`          | gmc → comsettings                | portnumber, baud, bits, parity, stopbits |
 | **init_data**   | `<app_init_data>`| project_preferences              | radacdebug, runtime (minutes)|
+| **rad_report_xml** (trickle) | `<sample>` (one or more) | boinc_send_trickle_up payload | timer, counter, timestamp, sensor_revision_int, sample_type, vid_pid_int |
 
 See **phase2-config.md** for the full config protocol and **recovered/config.cpp** for the TinyXML2 implementation.

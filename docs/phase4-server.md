@@ -7,7 +7,7 @@ This document describes how GMC300.exe sends detector data to the Radioactive@ho
 ## 1. Scope
 
 - **Mechanism:** The app does **not** perform direct HTTP or HTTPS requests. It builds a payload and uses the BOINC API **trickle-up** to send data; the BOINC client forwards trickles to the project server.
-- **Contents:** Trickle variety and payload format, data.bin (path, when written, format), absence of URLs and in-payload auth in the app, function roles, and known gaps to confirm in the binary.
+- **Contents:** Trickle variety and payload format, data.bin (path, when written, format), absence of URLs and in-payload auth in the app, and function roles.
 
 ---
 
@@ -31,21 +31,34 @@ So: **detector → build payload → boinc_send_trickle_up → BOINC client send
 | Item | Value |
 |------|--------|
 | **Variety** | **rad_report_xml** |
-| **Payload** | XML string. Exact tag names and structure are to be confirmed in the binary (see Known gaps). |
+| **Payload** | XML string; format matches the original program. See §3.2 and docs/boinc-xml-reference.md; reference behaviour in docs/original-program-behaviour.md. |
 
-### 3.2 Inferred payload fields
+### 3.2 Trickle payload (original program behaviour)
 
-From the data flow (detector protocol and config), the XML payload is expected to include:
+The original program passes to **boinc_send_trickle_up("rad_report_xml", xml)**:
 
-| Field (inferred) | Likely role |
-|------------------|-------------|
-| **CPM** | Counts per minute from GETCPM (Phase 3). |
-| **Timestamp / time** | When the sample was taken (`<timestamp>` in trickle; format in recovered main_app and docs/boinc-xml-reference.md). |
-| **Sample index or count** | Which sample in the run (from runtime and 240‑second intervals; see Phase 2). |
+- One `<sample>...</sample>` per send. The app may queue samples and send when both conditions in §3.3 are met.
+- **Tags:** `<timer>`, `<counter>`, `<timestamp>`, `<sensor_revision_int>`, `<sample_type>`, `<vid_pid_int>`.
 
-Other elements (e.g. version, device id) may exist; **exact XML tag names and attribute order are to be confirmed in the binary** (discovery had no Ghidra MCP; manual or Ghidra analysis is needed).
+| Field | Meaning |
+|-------|--------|
+| **timer** | Cumulative ms from run start (first sample can be 0 or small). |
+| **counter** | Time-weighted counter: sum of (CPM × interval in minutes) per sample. |
+| **timestamp** | `YYYY-MM-DD HH:MM:SS` (local time; see docs/original-program-behaviour.md). |
+| **sensor_revision_int** | Fixed `0`. |
+| **sample_type** | `"f"` (first run), `"r"` (resume or long gap), or `"n"` (normal). |
+| **vid_pid_int** | Unsigned int (e.g. 0 or device id). |
 
-### 3.3 How the BOINC API writes the trickle
+Template:  
+`<sample><timer>%u</timer>\n<counter>%u</counter>\n<timestamp>%u-%u-%u %u:%u:%u</timestamp>\n<sensor_revision_int>%i</sensor_revision_int>\n<sample_type>%s</sample_type>\n<vid_pid_int>%u</vid_pid_int>\n</sample>\n`
+
+### 3.3 When the original program sends a trickle
+
+- Only when **not** in standalone mode.
+- After each sample the payload is queued; a send is attempted when **both**: pending samples ≥ 3 (or 2 in debug), and at least 20 s (or 10 s in debug) since the last successful send.
+- On exit and on sensor loss (after repeated read errors), any pending buffer is sent once.
+
+### 3.4 How the BOINC API writes the trickle
 
 - **boinc_send_trickle_up(char* variety, char* text)** is implemented in the BOINC library.
 - It writes to a BOINC-managed trickle-up file (e.g. the file named by `TRICKLE_UP_FILENAME`): first a line with `<variety>...</variety>`, then the raw payload text.
@@ -59,7 +72,7 @@ Other elements (e.g. version, device id) may exist; **exact XML tag names and at
 |--------|--------|
 | **Logical name** | **data.bin**. The app uses this name; the physical path is typically resolved via **boinc_resolve_filename("data.bin", buf, len)** when using the BOINC API for file resolution. |
 | **When written** | In the same high-level flow as the trickle: after reading the detector and building the payload. The exact order relative to **boinc_send_trickle_up** (before or after) is not confirmed. |
-| **Format / layout** | **Resolved.** Text, one line per sample: time_diff_ms (1000 first line), counter (accumulated CPM), timestamp Y-M-D H:M:S, 0, sample_type "r"/"n", 0. Implemented in main_app.cpp; see docs/boinc-xml-reference.md. |
+| **Format / layout** | Text, one line per sample: timer (ms), counter (time-weighted), timestamp Y-M-D H:M:S, 0, sample_type "f"/"r"/"n", 0. See docs/original-program-behaviour.md and docs/boinc-xml-reference.md; implemented in main_app.cpp. |
 | **Relationship to trickle** | Same detector/sample pipeline; one data.bin line and one trickle per sample (same timer/counter/timestamp). |
 
 **Summary:** Path, format, and write order are implemented and documented in recovered code and docs.
@@ -97,11 +110,8 @@ Other protocol and config functions (e.g. open_com_port, init_com_after_open, re
 
 ## 7. Known Gaps
 
-The following were inferred from codebase and BOINC reference; **exact details are to be filled when Ghidra (or manual analysis) is used:**
-
-- **Exact trickle XML tags** — Tag names, attribute order, and full set of elements (e.g. `<report>`, `<cpm>`, `<timestamp>`, `<sample>`) for **rad_report_xml**.
-- **data.bin format** — Resolved in recovered code; see docs/boinc-xml-reference.md and main_app.cpp (line format: time_diff_ms, counter, timestamp, 0, sample_type, 0).
-- **Builder/writer function names** — Resolved: build and write are inline in main_app.cpp.
+- **Trickle XML and timing** — See §3.2–3.3 and docs/original-program-behaviour.md.
+- **data.bin format** — See docs/original-program-behaviour.md and main_app.cpp (timer, counter, timestamp, 0, sample_type, 0).
 
 ---
 

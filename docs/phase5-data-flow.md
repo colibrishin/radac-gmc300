@@ -91,9 +91,9 @@ flowchart TD
 
 ## 6. Critical-Path Function Order (Execution Summary)
 
-Use this order when tracing or decompiling the main path:
+Function order along the main path:
 
-1. **Entry / CRT** → **main_app** (0x00403710)
+1. **Entry / CRT** → **main_app**
 2. **boinc_init** (or boinc_init_options)
 3. **parse_init_data_file** — init_data.xml → project_preferences stored
 4. **read_project_preferences**(init_data, `"project_preferences"`)
@@ -111,7 +111,7 @@ Supporting functions (see Phase 2–4): read_project_preferences, get_config_val
 ## 7. References
 
 - **Phase docs** are the main reference: Phase 2 (config flow and keys), Phase 3 (serial commands and parsing), Phase 4 (trickle-up and data.bin).
-- **This document** is the end-to-end summary; the critical-path list in §6 gives the function order (main_app → config → open_com_port → init_com_after_open → read_detector_sample → trickle/data.bin → boinc_finish).
+- **This document** is the end-to-end summary; §6 gives the function order. Reference behaviour of the original program (trickle, data.bin, sample_type, resume): docs/original-program-behaviour.md.
 
 ---
 

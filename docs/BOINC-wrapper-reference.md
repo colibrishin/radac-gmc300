@@ -19,7 +19,7 @@ The wrapper does **not** implement the GMC-300 logic; it runs the **application*
 |------|-------------|
 | **`boinc/api/boinc_api.h`** | Declarations for C-linkage API used by apps. |
 
-### Key functions (from `boinc_api.h`) – match names used in Ghidra renames
+### Key functions (from `boinc_api.h`)
 
 - `boinc_init()` / `boinc_init_options(BOINC_OPTIONS*)` – init BOINC runtime.
 - `boinc_finish(int status)` – exit and report result.

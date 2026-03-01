@@ -26,6 +26,7 @@
 - **Analysis:** Complete. Recovery steps 1–5 done.
 - **Recovered code:** Refactored, TinyXML2, platform-agnostic serial, C++20. Init_data and fraction_done validated; runtime from project_preferences applied when BOINC build and init_data present. Runtime length uses EFFECTIVE_SEC_PER_SAMPLE and RUNTIME_BUFFER_SEC so task finishes within configured runtime. data.bin sample_type "f"/"r"/"n"; separate trickle timer (TRICKLE_INTERVAL_SEC); first trickle always sent.
 - **CI/CD:** CI on PR (all OS, Release); CodeQL; Release on tag or workflow_call; Tag-and-Release on push to main. Docs: phase5 (§8 timing/trickle), build.md (§7 CI/CD).
+- **Trickle / data.bin:** Reference behaviour documented in docs/original-program-behaviour.md (trickle XML and send rules, data.bin format, sample_type, resume). phase4-server.md and boinc-xml-reference.md point to it; raw RE details kept out of public docs.
 
 ## Resolved / optional
 

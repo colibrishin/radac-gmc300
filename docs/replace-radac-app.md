@@ -28,10 +28,7 @@ Example (Windows): `C:\ProgramData\BOINC\projects\radioactiveathome.org_boinc`
 
 ## 2. Stop BOINC or suspend the project (recommended)
 
-To avoid the client overwriting or locking files:
-
-- **Option A:** Exit the BOINC client completely.
-- **Option B:** In the BOINC Manager, suspend the Radioactive@home project (or detach and reattach after replacing files).
+To avoid the client overwriting or locking files Exit the BOINC client completely.
 
 ---
 

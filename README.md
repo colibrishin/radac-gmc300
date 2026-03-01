@@ -53,6 +53,7 @@ See **recovered/README.md** for file layout and **docs/build.md** for full build
 
 | Document | Description |
 |----------|-------------|
+| [docs/original-program-behaviour.md](docs/original-program-behaviour.md) | Reference behaviour of the original GMC300.exe (trickle, data.bin, sample_type, resume). |
 | [docs/phase5-data-flow.md](docs/phase5-data-flow.md) | End-to-end data flow, timing (SAMPLE_INTERVAL_SEC, EFFECTIVE_SEC_PER_SAMPLE, TRICKLE_INTERVAL_SEC), and data.bin sample_type. |
 | [docs/replace-radac-app.md](docs/replace-radac-app.md) | How to replace the default Radioactive@home app with the custom binary, app_info.xml, and gmc.xml. |
 | [docs/boinc-xml-reference.md](docs/boinc-xml-reference.md) | gmc.xml and init_data.xml layout; project_preferences (runtime, radacdebug). |
