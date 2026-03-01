@@ -1,0 +1,26 @@
+# Binary under analysis (add locally; do not commit)
+GMC300.exe
+bin/*.exe
+
+.cursor/
+
+# Ghidra project artifacts
+*.lock
+*.rep/
+*.gpr
+.projectdata
+*.gzf
+*.csv
+# Index/temp files inside .rep (if any tracked)
+~index.*
+~journal.*
+*.tmp
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Build
+build/

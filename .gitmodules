@@ -1,0 +1,30 @@
+[submodule "third_party/tinyxml2"]
+	path = third_party/tinyxml2
+	url = https://github.com/leethomason/tinyxml2.git
+[submodule "third_party/boinc"]
+	path = third_party/boinc
+	url = https://github.com/BOINC/boinc
+[submodule "third_party/asio"]
+	path = third_party/asio
+	url = https://github.com/boostorg/asio.git
+[submodule "third_party/system"]
+	path = third_party/system
+	url = https://github.com/boostorg/system.git
+[submodule "third_party/config"]
+	path = third_party/config
+	url = https://github.com/boostorg/config.git
+[submodule "third_party/assert"]
+	path = third_party/assert
+	url = https://github.com/boostorg/assert.git
+[submodule "third_party/throw_exception"]
+	path = third_party/throw_exception
+	url = https://github.com/boostorg/throw_exception.git
+[submodule "third_party/align"]
+	path = third_party/align
+	url = https://github.com/boostorg/align.git
+[submodule "third_party/winapi"]
+	path = third_party/winapi
+	url = https://github.com/boostorg/winapi.git
+[submodule "third_party/predef"]
+	path = third_party/predef
+	url = https://github.com/boostorg/predef.git

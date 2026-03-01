@@ -1,0 +1,26 @@
+<app_info>
+   <app>
+      <name>radac</name>
+      <user_friendly_name>R@H Beta</user_friendly_name>
+   </app>
+   <file_info>
+      <name>gmc300.exe</name>
+      <executable/>
+   </file_info>
+	<file_info>
+      <name>gmc.xml</name>
+   </file_info>
+   <app_version>
+      <app_name>radac</app_name>
+      <version_num>170</version_num>
+      <file_ref>
+         <file_name>gmc300.exe</file_name>
+	<open_name>radac_1.70_windows_intelx86.exe</open_name>
+	<main_program/>
+      </file_ref>      
+	<file_ref>
+         <file_name>gmc.xml</file_name>
+	<copy_file/>
+      </file_ref>
+   </app_version>
+</app_info>

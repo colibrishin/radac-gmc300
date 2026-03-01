@@ -1,0 +1,12 @@
+<gmc>
+  <comsettings>
+    <comment>Edit port number below</comment>
+    <portnumber>4</portnumber>
+    <baud>115200</baud>
+    <bits>8</bits>
+    <parity>n</parity>
+    <stopbits>1</stopbits>
+  </comsettings>
+  <options>
+  </options>
+</gmc>
