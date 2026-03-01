@@ -55,8 +55,8 @@ std::uint32_t data_bin_open_arg1 = 0;
 std::uint32_t data_bin_open_arg2 = 0;
 std::uint32_t data_bin_open_arg3 = 0;
 double boinc_fraction_done_val = 0.0;
-double ms_to_sec_divisor = 1000.0;
-double uSv_h_divisor = 151.0;
+double ms_to_sec_divisor = 1000.0;   /* Time in seconds; counter formula uses interval in minutes (elapsed_sec/60). */
+double uSv_h_divisor = 151.0;        /* CPM to µSv/h calibration (GMC-300 / project convention). */
 std::uint16_t trickle_buf_pad = 0;
 
 int parse_int_cstr(char* str) {

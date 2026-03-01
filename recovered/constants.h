@@ -4,6 +4,7 @@
 #ifndef GMC_RECOVERED_CONSTANTS_H
 #define GMC_RECOVERED_CONSTANTS_H
 
+#include <chrono>
 #include <cstddef>
 #include <string_view>
 
@@ -31,8 +32,10 @@ inline constexpr int GETCPM_RETRY_ATTEMPTS = 2;        // retries if first read 
 inline constexpr int GETCPM_RETRY_DELAY_SEC = 2;       // delay between retries
 
 // App / config (init_data.xml: runtime in minutes -> sample count)
-// num_samples = (runtime_min*60 - RUNTIME_BUFFER_SEC) / EFFECTIVE_SEC_PER_SAMPLE so wall time stays within given runtime.
-inline constexpr int SECONDS_PER_MINUTE = 60;
+// num_samples = (runtime_min*60 - RUNTIME_BUFFER_SEC) / EFFECTIVE_SEC_PER_SAMPLE so task runtime matches project runtime.
+inline constexpr int SECONDS_PER_MINUTE = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::minutes(1)).count());
+/** Milliseconds per minute (std::chrono); used to convert time_diff_ms to minutes for time-weighted counter. */
+inline constexpr unsigned int MS_PER_MINUTE = static_cast<unsigned int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::minutes(1)).count());
 /** Seconds reserved for startup (COM open, GETVER) so remaining time is for samples only. */
 inline constexpr int RUNTIME_BUFFER_SEC = 120;
 /** Seconds between CPM reads (GETCPM); drives data.bin line rate. */
@@ -56,13 +59,16 @@ inline constexpr int READ_ATTEMPTS_PER_SAMPLE = 2;
 // Trickle-up: separate timer from CPM read. 0 = send every sample (same as CPM rate); >0 = send at most every N seconds.
 inline constexpr int TRICKLE_INTERVAL_SEC = 240;           // 0 = one trickle per sample; e.g. 120 = at most every 2 min
 
-inline constexpr int TRICKLE_ONE_PER_SAMPLE = 1;         // 1 = use TRICKLE_INTERVAL_SEC (or every sample if 0); 0 = rate-limited by MIN_PENDING/MIN_INTERVAL below
+inline constexpr int TRICKLE_ONE_PER_SAMPLE = 0;         // 1 = use TRICKLE_INTERVAL_SEC (or every sample if 0); 0 = rate-limited by MIN_PENDING/MIN_INTERVAL below
 
-// When TRICKLE_ONE_PER_SAMPLE == 0: send when pending > threshold and interval elapsed (reverse-engineered)
+// When TRICKLE_ONE_PER_SAMPLE == 0: send when pending >= threshold and interval elapsed
 inline constexpr int TRICKLE_MIN_PENDING = 3;
 inline constexpr int TRICKLE_MIN_PENDING_DEBUG = 2;
 inline constexpr int TRICKLE_MIN_INTERVAL_SEC = 20;
 inline constexpr int TRICKLE_MIN_INTERVAL_SEC_DEBUG = 10;
+
+// data.bin: sample_type "r" when gap since previous line exceeds this (ms).
+inline constexpr unsigned int LONG_GAP_MS = SAMPLE_INTERVAL_SEC * 2000u;
 
 // data.bin resume
 inline constexpr std::size_t DATA_BIN_LINE_BUF = 2048;

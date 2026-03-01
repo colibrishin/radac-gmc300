@@ -7,6 +7,7 @@
 #include "safe_c.h"
 #include "serial_port.h"
 #include "time_compat.h"
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -40,7 +41,7 @@ int init_com_after_open(void**, int);
 void read_detector_sample(void*, int, int*);
 void debug_dump_com_handle(void**);
 
-/** Fill struct tm from __time64_t for data.bin field 3 (timestamp). UTC to match original program. */
+/** Fill struct tm from __time64_t for data.bin field 3 (timestamp). UTC. */
 static void time64_to_tm(__time64_t t64, std::tm* out) {
   if (out == nullptr) return;
 #if defined(_WIN32)
@@ -68,7 +69,7 @@ struct main_app_state {
   int trickle_result;
   int trickle_pending;
   int trickle_sent;
-  __time64_t last_trickle_send_time;  /* for time-based send (local_510 in original) */
+  __time64_t last_trickle_send_time;  /* for time-based trickle send interval */
   __time64_t time_start;
   double fraction_done;
   unsigned int time_hi;
@@ -99,8 +100,10 @@ struct main_app_state {
   double uSv_h;
   unsigned int elapsed_ticks_prev;
   unsigned short trickle_buf[512];
-  /** Accumulated counter for data.bin second field (Ghidra local_4b8). Incremented by elapsed_ticks each sample. */
+  /** data.bin second field: time-weighted counter = sum over samples of (CPM * interval_minutes), with interval_minutes = time_diff_ms / MS_PER_MINUTE. */
   unsigned int counter;
+  /** Previous line's field 1 (timer ms); from resume token 1 or last written line. Used for sample_type long-gap "r". */
+  unsigned int prev_timer_ms;
 };
 
 void main_app() {
@@ -143,6 +146,7 @@ void main_app() {
       if (cstr != nullptr) {
         int parsed = parse_int_cstr(cstr);
         runtime_minutes = parsed;
+        /* Match task runtime to project runtime: reserve RUNTIME_BUFFER_SEC, use EFFECTIVE_SEC_PER_SAMPLE (~41 s per sample). */
         int available_sec = parsed * gmc::SECONDS_PER_MINUTE - gmc::RUNTIME_BUFFER_SEC;
         L.num_samples = (available_sec > 0) ? static_cast<int>(available_sec / gmc::EFFECTIVE_SEC_PER_SAMPLE) : 0;
         if (L.num_samples < 1)
@@ -196,8 +200,9 @@ void main_app() {
         std::snprintf(dest, 256, "%s", L.strtok_ptr);
         L.strtok_ptr = safe_strtok(nullptr, ",\n", &strtok_context);
       }
-      if (L.token_count == gmc::RESUME_TOKENS_EXPECTED)
-        L.time_diff_ms = static_cast<unsigned int>(parse_int_cstr(L.resume_token_storage));
+      /* Resume: only field 1 (timer) is restored as prev_timer_ms; counter is not restored (zeroed on COM open). */
+      if (L.token_count >= 1)
+        L.prev_timer_ms = static_cast<unsigned int>(parse_int_cstr(L.resume_token_storage));
     }
   }
 
@@ -228,7 +233,7 @@ void main_app() {
       L.com_open_ok = 1;
       L.last_sample_time = get_time64(nullptr);
       L.elapsed_ticks = 0;
-      L.counter = 0;
+      L.counter = 0;  /* counter zeroed on COM open (no restore on resume) */
       break;
     }
     serial_close(L.com_handle);
@@ -251,7 +256,7 @@ void main_app() {
   }
 
   L.time_start = get_time64(nullptr);
-  L.last_trickle_send_time = get_time64(nullptr);  /* original local_510 before loop */
+  L.last_trickle_send_time = get_time64(nullptr);
   int sample_index = L.data_bin_line_count;
 
   for (;;) {
@@ -288,7 +293,7 @@ void main_app() {
           L.data_bin_resumed = 1;
           L.read_error_count = 0;
           L.elapsed_ticks = 0;
-          L.counter = 0;
+          L.counter = 0;  /* counter zeroed on COM open */
           L.time_start = get_time64(nullptr);
           L.last_trickle_send_time = get_time64(nullptr);
           L.last_sample_time = get_time64(nullptr);
@@ -320,8 +325,11 @@ void main_app() {
         L.elapsed_ticks = static_cast<unsigned int>(L.cpm_value);  /* CPM from this sample for uSv_h/cpm_per_sec */
         L.total_samples_done++;  /* count successful samples so "No readings" is accurate */
         L.fraction_done = static_cast<double>(L.total_samples_done) / L.num_samples;  /* report progress after each completed sample */
-        /* data.bin: accumulated counter (Ghidra local_4b8); used as second field in each line. */
-        L.counter += L.elapsed_ticks;
+        /* data.bin second field: time-weighted counter. counter += CPM * interval_minutes; interval_minutes = time_diff_ms / MS_PER_MINUTE. */
+        {
+          double interval_minutes = static_cast<double>(L.time_diff_ms) / static_cast<double>(gmc::MS_PER_MINUTE);
+          L.counter += static_cast<unsigned int>(std::round(interval_minutes * static_cast<double>(L.elapsed_ticks)));
+        }
         std::ofstream data_out = open_data_bin_append();
         if (data_out.is_open()) {
           L.elapsed_sec = static_cast<double>(L.time_diff_ms) / ms_to_sec_divisor;
@@ -332,26 +340,34 @@ void main_app() {
           L.trickle_buf[0] = trickle_buf_pad;
 
           /*
-           * data.bin line format (matches original GMC300.exe output). One line per sample, comma-separated:
-           *   Field 1: cumulative elapsed ms since run start. First line: 1000 (original uses 1000,1,...).
-           *            Later lines: (time_prev_sample - time_start) * 1000 (e.g. 242000, 483000).
-           *   Field 2: counter (accumulated sum of CPM per sample; Ghidra local_4b8).
-           *   Field 3: timestamp "Y-M-D H:M:S" UTC, no leading zeros. Field 4: 0. Field 5: sample_type "f"/"r"/"n". Field 6: 0.
+           * data.bin line format. One line per sample, comma-separated:
+           *   Field 1: cumulative elapsed ms since run start (can be 0).
+           *   Field 2: counter (time-weighted: sum of CPM * (time_diff_ms / MS_PER_MINUTE) per sample).
+           *   Field 3: timestamp "Y-M-D H:M:S" UTC. Field 4: 0. Field 5: sample_type "f"/"r"/"n". Field 6: 0.
            */
           __time64_t elapsed_sec_from_start = L.time_prev_sample - L.time_start;
-          unsigned int cumulative_ms = (elapsed_sec_from_start <= 0) ? 1000u : static_cast<unsigned int>(elapsed_sec_from_start) * 1000u;
-          unsigned int field1_ms = (L.total_samples_done == 1) ? 1000u : cumulative_ms;
-          /* First line: "f" = fresh run (no resume), "r" = resume; else "n" */
-          const char* sample_type = (L.total_samples_done == 1)
-            ? (L.data_bin_line_count > 0 ? "r" : "f")
-            : "n";
+          unsigned int field1_ms = (elapsed_sec_from_start <= 0) ? 0u : static_cast<unsigned int>(elapsed_sec_from_start) * 1000u;
+          /* sample_type: "f" first line fresh, "r" first line after resume or when gap since previous line > LONG_GAP_MS, else "n". */
+          const char* sample_type;
+          if (L.total_samples_done == 1) {
+            sample_type = (L.data_bin_line_count > 0 ? "r" : "f");
+          } else {
+            sample_type = "n";
+            if (field1_ms > L.prev_timer_ms && (field1_ms - L.prev_timer_ms) > gmc::LONG_GAP_MS)
+              sample_type = "r";
+          }
           std::tm tm{};
           time64_to_tm(L.time_prev_sample, &tm);
           data_out << field1_ms << ',' << L.counter << ','
                    << (tm.tm_year + 1900) << '-' << (tm.tm_mon + 1) << '-' << tm.tm_mday << ' '
                    << tm.tm_hour << ':' << tm.tm_min << ':' << tm.tm_sec << ",0," << sample_type << ",0\n";
+          if (std::ostream* os = get_debug_stream(); os != nullptr)
+            *os << field1_ms << ',' << L.counter << ','
+                << (tm.tm_year + 1900) << '-' << (tm.tm_mon + 1) << '-' << tm.tm_mday << ' '
+                << tm.tm_hour << ':' << tm.tm_min << ':' << tm.tm_sec << ",0," << sample_type << ",0\n";
           if (L.data_bin_resumed != 0)
             L.data_bin_resumed = 0;
+          L.prev_timer_ms = field1_ms;  /* used for next line's long-gap check */
           /* Trickle-up: same timer/counter/timestamp as data.bin line so validation can match. */
           int n = std::snprintf(L.trickle_scratch, sizeof(L.trickle_scratch),
             "<sample><timer>%u</timer>\n<counter>%u</counter>\n<timestamp>%u-%u-%u %u:%u:%u</timestamp>\n"
