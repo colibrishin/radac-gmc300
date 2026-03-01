@@ -99,7 +99,7 @@ jobs:
         run: |
           cp third_party/boinc/win_build/win-config.h third_party/boinc/win_build/config.h
           cd third_party/boinc/lib
-          make -f Makefile.mingw BOINC_SRC=..
+          mingw32-make -f Makefile.mingw BOINC_SRC=..
           cp libboinc_api.a libboincapi.a
           cd ../../..
 
