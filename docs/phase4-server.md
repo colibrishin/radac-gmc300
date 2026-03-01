@@ -55,7 +55,7 @@ Template:
 ### 3.3 When the original program sends a trickle
 
 - Only when **not** in standalone mode.
-- After each sample the payload is queued; a send is attempted when **both**: pending samples ≥ 3 (or 2 in debug), and at least 20 s (or 10 s in debug) since the last successful send.
+- After each sample the payload is queued; a send is attempted when **both**: pending samples ≥ 3 (or 2 in debug), and at least 20 minutes (or 10 in debug) since the last successful send.
 - On exit and on sensor loss (after repeated read errors), any pending buffer is sent once.
 
 ### 3.4 How the BOINC API writes the trickle

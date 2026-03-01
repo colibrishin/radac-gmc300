@@ -25,7 +25,7 @@ This document describes the **reference behaviour** of the original GMC300.exe a
 - Only when **not** in standalone mode.
 - After each sample, the payload is queued. A send is attempted when **both**:
   - Pending samples ≥ 3 (or 2 when debug is enabled), and
-  - At least 20 seconds (or 10 s in debug) have passed since the last successful send.
+  - At least 20 minutes (or 10 in debug) have passed since the last successful send.
 - Pending data is also sent on normal exit and when the sensor is lost (after repeated read errors, before closing the port and retrying).
 
 ---
@@ -62,7 +62,7 @@ Comma-separated fields:
 ## 3. Config and runtime
 
 - **num_samples** — Derived from project runtime (minutes): `num_samples = (runtime_minutes × 60) / sample_interval_seconds`. The original uses a fixed sample interval (e.g. 240 s) and **no** startup buffer in this formula.
-- **radacdebug** — When non-zero, debug mode: shorter trickle interval (10 s), lower pending threshold (2), and extra debug logging.
+- **radacdebug** — When non-zero, debug mode: shorter trickle interval (10 min), lower pending threshold (2), and extra debug logging.
 - **runtime** — Read from project_preferences; interpreted as runtime in minutes.
 
 ---
