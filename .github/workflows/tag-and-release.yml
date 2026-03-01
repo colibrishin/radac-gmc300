@@ -1,0 +1,45 @@
+# On push to main, create a new version tag, push it, and trigger the Release
+# workflow (GITHUB_TOKEN tag pushes do not trigger other workflows, so we call
+# Release via workflow_dispatch).
+name: Tag and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create tag and trigger release
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Tag format: {date}-{SHA} e.g. 20250228-abc1234
+          DATE=$(date -u +%Y%m%d)
+          SHA=$(git rev-parse --short HEAD)
+          TAG="${DATE}-${SHA}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Trigger Release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run release.yml -f tag="$TAG"
+          echo "Triggered Release workflow for tag: $TAG"
