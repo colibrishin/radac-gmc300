@@ -208,7 +208,22 @@ Ensure the linked BOINC library exports these (C linkage).
 
 ---
 
-## 7. References
+## 7. CI/CD (GitHub Actions)
+
+From the repo root, **`.github/workflows/`** provide:
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| **CI** | Pull requests to `main` | Build standalone and BOINC on Ubuntu, macOS, and Windows (matrix). All use **Release** build type. |
+| **CodeQL** | Push/PR to `main`, weekly | C++ code scanning (security/quality). |
+| **Release** | Push of tag `v*` or `*-*` (e.g. `20250228-abc1234`), or `workflow_dispatch` with tag input | Build BOINC-linked binaries on Ubuntu, macOS, and Windows; create GitHub Release with artifacts. |
+| **Tag and Release** | Push to `main`, or `workflow_dispatch` | Create tag `{date}-{SHA}`, push it, then call Release workflow (reusable) so a release is built and published. |
+
+- **Release build type** is set explicitly in CI and Release workflows (`-DCMAKE_BUILD_TYPE=Release`). CMake does not default it.
+- **Windows:** MinGW builds use `mingw32-make` for BOINC; standalone and BOINC both link **ws2_32** (Winsock) for serial/Asio.
+- **BOINC link order:** libboincapi must be linked before libboinc (CMakeLists.txt uses `${BOINC_API_LIB} ${BOINC_LIB}`).
+
+## 8. References
 
 - **Critical path:** docs/phase5-data-flow.md  
 - **BOINC API:** third_party/boinc/api/boinc_api.h  

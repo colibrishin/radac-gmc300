@@ -69,10 +69,10 @@ flowchart TD
 |-------|----------------|------------------|
 | **1. BOINC init** | Entry → CRT → **boinc_init**; BOINC provides init data (e.g. init_data.xml). | Phase 2 |
 | **2. Parse init_data** | **parse_init_data_file** parses init_data; **project_preferences** block is stored for later use. | Phase 2 §2, §5 |
-| **3. main_app – config** | **read_project_preferences**(init_data, `"project_preferences"`) → read **radacdebug**, **runtime** (num_samples = runtime_minutes×60 / SAMPLE_INTERVAL_SEC (default 30)). Then **get_com_port_number** → load **gmc.xml** (section **gmc**), read **comsettings** → **portnumber** (1–99). | Phase 2 §4, §5, §6 |
+| **3. main_app – config** | **read_project_preferences**(init_data, `"project_preferences"`) → read **radacdebug**, **runtime**. num_samples = (runtime_minutes×60 − RUNTIME_BUFFER_SEC) / EFFECTIVE_SEC_PER_SAMPLE so wall time stays within given runtime (EFFECTIVE_SEC_PER_SAMPLE = SAMPLE_INTERVAL_SEC + GETCPM delays ≈ 41 s; RUNTIME_BUFFER_SEC = 120). Then **get_com_port_number** → load **gmc.xml** (section **gmc**), read **comsettings** → **portnumber** (1–99). | Phase 2 §4, §5, §6 |
 | **4. Open COM** | **open_com_port**(port) → `COM%d`, 57600 8N1, timeouts 1 s + 100 ms/byte. | Phase 3 §2, §6 |
 | **5. Init device** | **init_com_after_open**: send **GETVER** → read 14 bytes → validate **"GMC"**; HEARTBEAT0 is not sent. | Phase 3 §3, §5, §6 |
-| **6. Main loop** | For each sample (up to num_samples): **read_detector_sample** → GETCPM → 2 bytes → CPM = byte0×256 + byte1 (big-endian). Build XML from CPM (and timing/sample index). **boinc_send_trickle_up**(`"rad_report_xml"`, xml). Optionally write **data.bin**. **boinc_fraction_done**; if **boinc_time_to_checkpoint**, **boinc_checkpoint_completed**. | Phase 3 §4; Phase 4 §2, §3, §4 |
+| **6. Main loop** | For each sample (up to num_samples): **read_detector_sample** → GETCPM → 2 bytes → CPM = byte0×256 + byte1 (big-endian). Wait **SAMPLE_INTERVAL_SEC** (30 s) between reads. Build XML from CPM (and timing/sample index). **boinc_send_trickle_up**(`"rad_report_xml"`, xml): first sample always sent; then if **TRICKLE_INTERVAL_SEC** is 0 send every sample, else at most every TRICKLE_INTERVAL_SEC seconds. Write **data.bin** (one line per sample); field 5 **sample_type** is `"f"` (first line of fresh run), `"r"` (first line after resume), or `"n"` (normal). **boinc_fraction_done**; if **boinc_time_to_checkpoint**, **boinc_checkpoint_completed**. | Phase 3 §4; Phase 4 §2, §3, §4 |
 | **7. Finish** | **boinc_finish**(status). | BOINC API |
 
 ---
@@ -115,4 +115,15 @@ Supporting functions (see Phase 2–4): read_project_preferences, get_config_val
 
 ---
 
-*Phase 5 deliverable: end-to-end data flow for GMC300.exe (config → device → server), critical-path summary, and reference to Phase 2–4.*
+## 8. Timing and trickle (recovered constants)
+
+| Constant | Role |
+|----------|------|
+| **SAMPLE_INTERVAL_SEC** (30) | Seconds between CPM reads (GETCPM); drives data.bin line rate. |
+| **EFFECTIVE_SEC_PER_SAMPLE** (~41) | SAMPLE_INTERVAL_SEC + GETCPM_DELAY_BEFORE_SEND_SEC + GETCPM_WAIT_AFTER_SEND_SEC; used to compute num_samples so wall time fits runtime. |
+| **RUNTIME_BUFFER_SEC** (120) | Seconds reserved for startup (COM open, GETVER); subtracted from runtime before dividing by EFFECTIVE_SEC_PER_SAMPLE. |
+| **TRICKLE_INTERVAL_SEC** (0 or e.g. 120/240) | 0 = send one trickle per sample; >0 = send at most every N seconds. First sample trickle is always sent. |
+
+---
+
+*Phase 5 deliverable: end-to-end data flow for GMC300.exe (config → device → server), critical-path summary, timing/trickle constants, and reference to Phase 2–4.*

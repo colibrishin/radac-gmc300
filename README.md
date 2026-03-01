@@ -9,8 +9,8 @@ Reverse-engineered documentation and **recovered C++** from **GMC300.exe**, the 
 
 ## What’s in this repo
 
-- **recovered/** — Recovered/reimplemented C++ (C++20, TinyXML2, platform-agnostic serial) that reproduces the behavior of GMC300.exe: config (gmc.xml, init_data), COM port, GMC-300 protocol (GETCPM/GETVER), data.bin output, and BOINC trickle/checkpoint/fraction_done (GETVER validates "GMC"; HEARTBEAT0 not used in init).
-- **docs/** — Analysis notes: config format, BOINC XML reference, init_data, data flow, build instructions, extern symbols, etc.
+- **recovered/** — Recovered/reimplemented C++ (C++20, TinyXML2, platform-agnostic serial) that reproduces the behavior of GMC300.exe: config (gmc.xml, init_data), COM port, GMC-300 protocol (GETCPM/GETVER), data.bin output (sample_type "f"/"r"/"n"), and BOINC trickle/checkpoint/fraction_done (GETVER validates "GMC"; HEARTBEAT0 not used in init). Timing: CPM read interval and optional separate trickle interval; runtime-based num_samples so task fits configured runtime.
+- **docs/** — Analysis notes: config format, BOINC XML reference, init_data, data flow (phase5), build and CI/CD instructions, extern symbols, etc.
 - **memory-bank/** — Project context and progress for ongoing work.
 - **third_party/** — Third-party libraries as git submodules (see **Third-party libraries** below).
 
@@ -53,9 +53,10 @@ See **recovered/README.md** for file layout and **docs/build.md** for full build
 
 | Document | Description |
 |----------|-------------|
+| [docs/phase5-data-flow.md](docs/phase5-data-flow.md) | End-to-end data flow, timing (SAMPLE_INTERVAL_SEC, EFFECTIVE_SEC_PER_SAMPLE, TRICKLE_INTERVAL_SEC), and data.bin sample_type. |
 | [docs/replace-radac-app.md](docs/replace-radac-app.md) | How to replace the default Radioactive@home app with the custom binary, app_info.xml, and gmc.xml. |
 | [docs/boinc-xml-reference.md](docs/boinc-xml-reference.md) | gmc.xml and init_data.xml layout; project_preferences (runtime, radacdebug). |
-| [docs/build.md](docs/build.md) | CMake, TinyXML2, BOINC, and standalone vs BOINC build. |
+| [docs/build.md](docs/build.md) | CMake, TinyXML2, BOINC, standalone vs BOINC build, and CI/CD (GitHub Actions). |
 | [docs/extern-symbols.md](docs/extern-symbols.md) | BOINC API and stubs required for linking. |
 
 ## License and attribution
