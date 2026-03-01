@@ -1,6 +1,6 @@
-# On push to main, create a new version tag, push it, and trigger the Release
-# workflow (GITHUB_TOKEN tag pushes do not trigger other workflows, so we call
-# Release via workflow_dispatch).
+# On push to main, create a new version tag, push it, then run the Release
+# workflow as a reusable workflow (no API trigger; GITHUB_TOKEN cannot trigger
+# other workflows).
 name: Tag and Release
 
 on:
@@ -13,9 +13,11 @@ permissions:
 
 jobs:
   tag:
-    name: Create tag and trigger release
+    name: Create tag
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    outputs:
+      tag: ${{ steps.create.outputs.tag }}
 
     steps:
       - name: Checkout
@@ -24,10 +26,10 @@ jobs:
           fetch-depth: 0
 
       - name: Create and push tag
+        id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Tag format: {date}-{SHA} e.g. 20250228-abc1234
           DATE=$(date -u +%Y%m%d)
           SHA=$(git rev-parse --short HEAD)
           TAG="${DATE}-${SHA}"
@@ -35,11 +37,13 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
           git push origin "$TAG"
-          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Created and pushed tag: $TAG"
 
-      - name: Trigger Release workflow
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh workflow run release.yml -f tag="$TAG"
-          echo "Triggered Release workflow for tag: $TAG"
+  release:
+    name: Build and release
+    needs: tag
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    secrets: inherit
