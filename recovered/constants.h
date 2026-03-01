@@ -26,6 +26,7 @@ inline constexpr std::size_t GETVER_RESPONSE_LEN = 14;  // e.g. "GMC-300Re 4.2";
 inline constexpr int GETVER_DELAY_AFTER_OPEN_SEC = 2;  // wait after port open before first command (device/USB stabilize)
 inline constexpr int GETVER_WAIT_AFTER_SEND_SEC = 2;   // wait after sending <GETVER>> before first read
 inline constexpr std::size_t CPM_RESPONSE_LEN = 2;     // 16-bit big-endian CPM (MSB first per GQ-RFC1201)
+inline constexpr int CPM_MSB_MULTIPLIER = 256;         // first byte is MSB when parsing 2-byte CPM
 inline constexpr int GETCPM_DELAY_BEFORE_SEND_SEC = 1;  // pause before sending GETCPM (avoid hammering device)
 inline constexpr int GETCPM_WAIT_AFTER_SEND_SEC = 10;    // wait after send before first read
 inline constexpr int GETCPM_RETRY_ATTEMPTS = 2;        // retries if first read gets 0 bytes
@@ -40,6 +41,8 @@ inline constexpr unsigned int MS_PER_MINUTE = static_cast<unsigned int>(std::chr
 inline constexpr int RUNTIME_BUFFER_SEC = 120;
 /** Seconds between CPM reads (GETCPM); drives data.bin line rate. */
 inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 30;
+/** Minimum elapsed seconds for CPM/uSv rate (avoids inflated rate on first sample or short gaps). */
+inline constexpr double MIN_ELAPSED_SEC_FOR_RATE = 60.0;
 // Per sample: interval wait + GETCPM_DELAY_BEFORE_SEND + GETCPM_WAIT_AFTER_SEND (actual time per sample ~41s, not 30s).
 inline constexpr int EFFECTIVE_SEC_PER_SAMPLE = SAMPLE_INTERVAL_SEC + GETCPM_DELAY_BEFORE_SEND_SEC + GETCPM_WAIT_AFTER_SEND_SEC;
 inline constexpr int DEFAULT_NUM_SAMPLES = 300;
@@ -56,22 +59,18 @@ inline constexpr int COM_OPEN_RETRY_DELAY_SEC = 60;
 inline constexpr int READ_ERROR_THRESHOLD = 2;
 inline constexpr int READ_ATTEMPTS_PER_SAMPLE = 2;
 
-// Trickle-up: separate timer from CPM read. 0 = send every sample (same as CPM rate); >0 = send at most every N seconds.
-inline constexpr int TRICKLE_INTERVAL_SEC = 240;           // 0 = one trickle per sample; e.g. 120 = at most every 2 min
-
-inline constexpr int TRICKLE_ONE_PER_SAMPLE = 0;         // 1 = use TRICKLE_INTERVAL_SEC (or every sample if 0); 0 = rate-limited by MIN_PENDING/MIN_INTERVAL below
-
-// When TRICKLE_ONE_PER_SAMPLE == 0: send when pending >= threshold and interval elapsed
+// Trickle-up: send when pending >= threshold and interval (in minutes) elapsed since last send
 inline constexpr int TRICKLE_MIN_PENDING = 3;
 inline constexpr int TRICKLE_MIN_PENDING_DEBUG = 2;
-inline constexpr int TRICKLE_MIN_INTERVAL_SEC = 20;
-inline constexpr int TRICKLE_MIN_INTERVAL_SEC_DEBUG = 10;
+inline constexpr int TRICKLE_MIN_INTERVAL_MIN = 20;   // minutes between trickle sends (normal)
+inline constexpr int TRICKLE_MIN_INTERVAL_MIN_DEBUG = 10;  // minutes (debug)
 
 // data.bin: sample_type "r" when gap since previous line exceeds this (ms).
 inline constexpr unsigned int LONG_GAP_MS = SAMPLE_INTERVAL_SEC * 2000u;
 
-// data.bin resume
+// data.bin resume (last line tokenized; token 1 = field 1 = timer ms)
 inline constexpr std::size_t DATA_BIN_LINE_BUF = 2048;
+inline constexpr std::size_t RESUME_TOKEN_SIZE = 256;   // max chars per token when parsing last line
 inline constexpr int RESUME_TOKENS_EXPECTED = 6;
 inline constexpr int ALMOST_DONE_MARGIN = 2;
 

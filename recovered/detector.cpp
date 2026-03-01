@@ -56,8 +56,8 @@ namespace {
     if (std::ostream* os = get_debug_stream())
       *os << "<GETCPM>> returned " << static_cast<int>(buf[0]) << ' ' << static_cast<int>(buf[1]) << '\n';
   }
-  /* GQ-RFC1201: first byte MSB, second byte LSB (big-endian) */
-  *cpm_out = static_cast<int>(buf[0]) * 256 + static_cast<int>(buf[1]);
+  // GQ-RFC1201: first byte MSB, second byte LSB (big-endian)
+  *cpm_out = static_cast<int>(buf[0]) * gmc::CPM_MSB_MULTIPLIER + static_cast<int>(buf[1]);
   return true;
 }
 
