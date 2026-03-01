@@ -46,8 +46,8 @@ jobs:
           autoreconf -i
           ./configure --disable-server --disable-client --disable-manager --enable-libraries
           make -j$(nproc)
-          cp lib/.libs/libboinc.a lib/libboinc.a
-          cp api/.libs/libboinc_api.a lib/libboincapi.a
+          [ ! lib/.libs/libboinc.a -ef lib/libboinc.a ] && cp lib/.libs/libboinc.a lib/libboinc.a || true
+          [ ! api/.libs/libboinc_api.a -ef lib/libboincapi.a ] && cp api/.libs/libboinc_api.a lib/libboincapi.a || true
           cd ../..
 
       - name: Build gmc_recovered (Linux)
@@ -71,8 +71,8 @@ jobs:
           autoreconf -i
           ./configure --disable-server --disable-client --disable-manager --enable-libraries
           make -j$(sysctl -n hw.ncpu)
-          cp lib/.libs/libboinc.a lib/libboinc.a
-          cp api/.libs/libboinc_api.a lib/libboincapi.a
+          [ ! lib/.libs/libboinc.a -ef lib/libboinc.a ] && cp lib/.libs/libboinc.a lib/libboinc.a || true
+          [ ! api/.libs/libboinc_api.a -ef lib/libboincapi.a ] && cp api/.libs/libboinc_api.a lib/libboincapi.a || true
           cd ../..
 
       - name: Build gmc_recovered (macOS)
@@ -90,7 +90,6 @@ jobs:
           update: true
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-g++
             mingw-w64-x86_64-make
             mingw-w64-x86_64-cmake
 
