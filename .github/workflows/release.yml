@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+      - '*-*'   # date-SHA format e.g. 20250228-abc1234
 
 permissions:
   contents: write

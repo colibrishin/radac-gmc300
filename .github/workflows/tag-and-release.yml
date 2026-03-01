@@ -1,0 +1,38 @@
+# On push to main, create a new version tag and push it. The Release workflow
+# (on push tags v*) will then build and publish the release.
+name: Tag and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual run from Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create tag and trigger release
+    runs-on: ubuntu-latest
+    # Skip if the push was a tag (avoid running when we push the new tag)
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Tag format: {date}-{SHA} e.g. 20250228-abc1234
+          DATE=$(date -u +%Y%m%d)
+          SHA=$(git rev-parse --short HEAD)
+          TAG="${DATE}-${SHA}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag: $TAG"
