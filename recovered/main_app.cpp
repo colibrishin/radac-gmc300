@@ -363,7 +363,20 @@ void main_app() {
           if (n > 0 && n < static_cast<int>(sizeof(L.trickle_scratch))) {
             int send_now = 0;
             if (gmc::TRICKLE_ONE_PER_SAMPLE != 0) {
-              send_now = 1;  /* one trickle per sample, same time as record */
+              /* Always send first sample; then 0 = every sample, >0 = at most every TRICKLE_INTERVAL_SEC */
+              if (L.total_samples_done == 1) {
+                send_now = 1;
+                L.last_trickle_send_time = get_time64(nullptr);
+              } else if (gmc::TRICKLE_INTERVAL_SEC == 0) {
+                send_now = 1;
+              } else {
+                __time64_t now = get_time64(nullptr);
+                __time64_t elapsed = now - L.last_trickle_send_time;
+                if (elapsed >= gmc::TRICKLE_INTERVAL_SEC) {
+                  send_now = 1;
+                  L.last_trickle_send_time = now;
+                }
+              }
             } else {
               L.trickle_pending++;
               int min_pending = L.debug_enabled ? gmc::TRICKLE_MIN_PENDING_DEBUG : gmc::TRICKLE_MIN_PENDING;

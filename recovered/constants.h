@@ -35,7 +35,8 @@ inline constexpr int GETCPM_RETRY_DELAY_SEC = 2;       // delay between retries
 inline constexpr int SECONDS_PER_MINUTE = 60;
 /** Seconds reserved for startup (COM open, GETVER) so remaining time is for samples only. */
 inline constexpr int RUNTIME_BUFFER_SEC = 120;
-inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 30;  // read interval (sec between samples); reduce for more data.bin lines + trickles (they stay 1:1)
+/** Seconds between CPM reads (GETCPM); drives data.bin line rate. */
+inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 30;
 // Per sample: interval wait + GETCPM_DELAY_BEFORE_SEND + GETCPM_WAIT_AFTER_SEND (actual time per sample ~41s, not 30s).
 inline constexpr int EFFECTIVE_SEC_PER_SAMPLE = SAMPLE_INTERVAL_SEC + GETCPM_DELAY_BEFORE_SEND_SEC + GETCPM_WAIT_AFTER_SEND_SEC;
 inline constexpr int DEFAULT_NUM_SAMPLES = 300;
@@ -52,8 +53,10 @@ inline constexpr int COM_OPEN_RETRY_DELAY_SEC = 60;
 inline constexpr int READ_ERROR_THRESHOLD = 2;
 inline constexpr int READ_ATTEMPTS_PER_SAMPLE = 2;
 
-// Trickle-up: set to 1 so each trickle matches one data.bin line (same time/data) for server validation.
-inline constexpr int TRICKLE_ONE_PER_SAMPLE = 1;         // 1 = send every sample (trickle time = record time); 0 = original rate-limited
+// Trickle-up: separate timer from CPM read. 0 = send every sample (same as CPM rate); >0 = send at most every N seconds.
+inline constexpr int TRICKLE_INTERVAL_SEC = 240;           // 0 = one trickle per sample; e.g. 120 = at most every 2 min
+
+inline constexpr int TRICKLE_ONE_PER_SAMPLE = 1;         // 1 = use TRICKLE_INTERVAL_SEC (or every sample if 0); 0 = rate-limited by MIN_PENDING/MIN_INTERVAL below
 
 // When TRICKLE_ONE_PER_SAMPLE == 0: send when pending > threshold and interval elapsed (reverse-engineered)
 inline constexpr int TRICKLE_MIN_PENDING = 3;
