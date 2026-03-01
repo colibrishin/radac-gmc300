@@ -31,9 +31,13 @@ inline constexpr int GETCPM_RETRY_ATTEMPTS = 2;        // retries if first read 
 inline constexpr int GETCPM_RETRY_DELAY_SEC = 2;       // delay between retries
 
 // App / config (init_data.xml: runtime in minutes -> sample count)
-// Shorter record/trickle intervals: reduce SAMPLE_INTERVAL_SEC and/or TRICKLE_* below; runtime stays same (num_samples = runtime_min*60/interval).
+// num_samples = (runtime_min*60 - RUNTIME_BUFFER_SEC) / EFFECTIVE_SEC_PER_SAMPLE so wall time stays within given runtime.
 inline constexpr int SECONDS_PER_MINUTE = 60;
-inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 30;  // read interval (sec between samples); reduce for more data.bin lines + trickles (they stay 1:1); runtime unchanged
+/** Seconds reserved for startup (COM open, GETVER) so remaining time is for samples only. */
+inline constexpr int RUNTIME_BUFFER_SEC = 120;
+inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 30;  // read interval (sec between samples); reduce for more data.bin lines + trickles (they stay 1:1)
+// Per sample: interval wait + GETCPM_DELAY_BEFORE_SEND + GETCPM_WAIT_AFTER_SEND (actual time per sample ~41s, not 30s).
+inline constexpr int EFFECTIVE_SEC_PER_SAMPLE = SAMPLE_INTERVAL_SEC + GETCPM_DELAY_BEFORE_SEND_SEC + GETCPM_WAIT_AFTER_SEND_SEC;
 inline constexpr int DEFAULT_NUM_SAMPLES = 300;
 inline constexpr int COM_PORT_MIN = 1;
 inline constexpr int COM_PORT_MAX = 99;

@@ -143,7 +143,10 @@ void main_app() {
       if (cstr != nullptr) {
         int parsed = parse_int_cstr(cstr);
         runtime_minutes = parsed;
-        L.num_samples = (parsed * gmc::SECONDS_PER_MINUTE) / L.sample_interval_sec_copy;
+        int available_sec = parsed * gmc::SECONDS_PER_MINUTE - gmc::RUNTIME_BUFFER_SEC;
+        L.num_samples = (available_sec > 0) ? static_cast<int>(available_sec / gmc::EFFECTIVE_SEC_PER_SAMPLE) : 0;
+        if (L.num_samples < 1)
+          L.num_samples = 1;
       }
     }
     release_config_value(&L.config_node);
