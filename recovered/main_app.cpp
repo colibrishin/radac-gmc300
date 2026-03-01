@@ -336,12 +336,15 @@ void main_app() {
            *   Field 1: cumulative elapsed ms since run start. First line: 1000 (original uses 1000,1,...).
            *            Later lines: (time_prev_sample - time_start) * 1000 (e.g. 242000, 483000).
            *   Field 2: counter (accumulated sum of CPM per sample; Ghidra local_4b8).
-           *   Field 3: timestamp "Y-M-D H:M:S" UTC, no leading zeros. Field 4: 0. Field 5: sample_type "r"/"n". Field 6: 0.
+           *   Field 3: timestamp "Y-M-D H:M:S" UTC, no leading zeros. Field 4: 0. Field 5: sample_type "f"/"r"/"n". Field 6: 0.
            */
           __time64_t elapsed_sec_from_start = L.time_prev_sample - L.time_start;
           unsigned int cumulative_ms = (elapsed_sec_from_start <= 0) ? 1000u : static_cast<unsigned int>(elapsed_sec_from_start) * 1000u;
           unsigned int field1_ms = (L.total_samples_done == 1) ? 1000u : cumulative_ms;
-          const char* sample_type = (L.total_samples_done == 1) ? "r" : (L.data_bin_resumed != 0 ? "r" : "n");
+          /* First line: "f" = fresh run (no resume), "r" = resume; else "n" */
+          const char* sample_type = (L.total_samples_done == 1)
+            ? (L.data_bin_line_count > 0 ? "r" : "f")
+            : "n";
           std::tm tm{};
           time64_to_tm(L.time_prev_sample, &tm);
           data_out << field1_ms << ',' << L.counter << ','
