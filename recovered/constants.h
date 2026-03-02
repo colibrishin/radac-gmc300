@@ -60,6 +60,7 @@ inline constexpr int READ_ERROR_THRESHOLD = 2;
 inline constexpr int READ_ATTEMPTS_PER_SAMPLE = 2;
 
 // Trickle-up: send when pending >= threshold and interval (in minutes) elapsed since last send
+inline constexpr std::size_t TRICKLE_BUF_SIZE = 512;  // BOINC trickle buffer (state.trickle_buf)
 inline constexpr int TRICKLE_MIN_PENDING = 3;
 inline constexpr int TRICKLE_MIN_PENDING_DEBUG = 2;
 inline constexpr int TRICKLE_MIN_INTERVAL_MIN = 20;   // minutes between trickle sends (normal)

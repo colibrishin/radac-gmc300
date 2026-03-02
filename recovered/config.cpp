@@ -277,41 +277,35 @@ void get_gmc_com_settings(struct gmc_com_settings* out) {
 
   tinyxml2::XMLDocument doc;
   if (doc.LoadFile("gmc.xml") != tinyxml2::XML_SUCCESS) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_ReadPortNumber(): could not find gmc.xml or the file is corrupted\n";
+    get_debug_stream() << "gmc_ReadPortNumber(): could not find gmc.xml or the file is corrupted\n";
     boinc_finish_and_exit(1);
   }
 
   tinyxml2::XMLElement* gmc = doc.FirstChildElement("gmc");
   if (!gmc) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_ReadPortNumber(): could not find gmc.xml or the file is corrupted\n";
+    get_debug_stream() << "gmc_ReadPortNumber(): could not find gmc.xml or the file is corrupted\n";
     boinc_finish_and_exit(1);
   }
 
   tinyxml2::XMLElement* comsettings = find_child_element(gmc, "comsettings");
   if (!comsettings) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_ReadPortNumber(): <comsettings> node empty, file corrupted ?\n";
+    get_debug_stream() << "gmc_ReadPortNumber(): <comsettings> node empty, file corrupted ?\n";
     boinc_finish_and_exit(1);
   }
 
   tinyxml2::XMLElement* portnumber = find_child_element(comsettings, "portnumber");
   if (!portnumber) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_ReadPortNumber(): <portnumber> node empty, file corrupted ?\n";
+    get_debug_stream() << "gmc_ReadPortNumber(): <portnumber> node empty, file corrupted ?\n";
     boinc_finish_and_exit(1);
   }
   const char* port_str = portnumber->GetText();
   if (!port_str || *port_str == '\0') {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_ReadPortNumber(): <portnumber> node empty, file corrupted ?\n";
+    get_debug_stream() << "gmc_ReadPortNumber(): <portnumber> node empty, file corrupted ?\n";
     boinc_finish_and_exit(1);
   }
   int port_number = static_cast<int>(std::strtol(port_str, nullptr, 10));
   if (port_number < gmc::COM_PORT_MIN || port_number > gmc::COM_PORT_MAX) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_ReadPortNumber(): Wrong port number\n";
+    get_debug_stream() << "gmc_ReadPortNumber(): Wrong port number\n";
     boinc_finish_and_exit(1);
   }
   out->port_number = port_number;

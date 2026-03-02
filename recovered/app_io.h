@@ -7,8 +7,11 @@
 #include <fstream>
 #include <iostream>
 
-/** Debug log stream (e.g. stderr). nullptr if debug output disabled. */
-std::ostream* get_debug_stream();
+/** Debug log stream (e.g. stderr). Always returns a valid reference. */
+std::ostream& get_debug_stream();
+
+/** Debug stream if enabled, otherwise a no-op stream that discards output. */
+std::ostream& get_debug_stream_if(bool enabled);
 
 /** Open data.bin for reading (resume / line count). */
 std::ifstream open_data_bin_for_resume();

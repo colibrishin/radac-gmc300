@@ -22,8 +22,7 @@ namespace {
   if (h == nullptr) return false;
   int n = serial_write(h, gmc::cmd_getcpm.data(), gmc::cmd_getcpm.size());
   if (n != static_cast<int>(gmc::cmd_getcpm.size())) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_GetCPM(): failed to send data or no device on the other end\n";
+    get_debug_stream() << "gmc_GetCPM(): failed to send data or no device on the other end\n";
     return false;
   }
   return true;
@@ -48,13 +47,11 @@ namespace {
       break;
     if (attempt < gmc::GETCPM_RETRY_ATTEMPTS - 1 && n == 0)
       continue;
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_GetCPM(): read failed (got " << (n < 0 ? 0 : n) << " bytes, expected " << gmc::CPM_RESPONSE_LEN << ")\n";
+    get_debug_stream() << "gmc_GetCPM(): read failed (got " << (n < 0 ? 0 : n) << " bytes, expected " << gmc::CPM_RESPONSE_LEN << ")\n";
     return false;
   }
   if (debug_enabled) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "<GETCPM>> returned " << static_cast<int>(buf[0]) << ' ' << static_cast<int>(buf[1]) << '\n';
+    get_debug_stream() << "<GETCPM>> returned " << static_cast<int>(buf[0]) << ' ' << static_cast<int>(buf[1]) << '\n';
   }
   // GQ-RFC1201: first byte MSB, second byte LSB (big-endian)
   *cpm_out = static_cast<int>(buf[0]) * gmc::CPM_MSB_MULTIPLIER + static_cast<int>(buf[1]);

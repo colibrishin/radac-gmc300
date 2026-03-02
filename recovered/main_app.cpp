@@ -4,16 +4,18 @@
 #include "config.h"
 #include "constants.h"
 #include "init_data.h"
-#include "safe_c.h"
 #include "serial_port.h"
 #include "time_compat.h"
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <format>
 #include <fstream>
-#include <sstream>
+#include <iterator>
 #include <string>
 
 extern "C" {
@@ -42,6 +44,37 @@ int init_com_after_open(void**, int);
 void read_detector_sample(void*, int, int*);
 void debug_dump_com_handle(void**);
 
+namespace {
+constexpr const char* kFmtTimestamp = "{}-{}-{} {}:{}:{}";
+constexpr const char* kFmtDataLine = "{},{},{},0,{},0\n";
+constexpr const char* kFmtSampleXml =
+    "<sample><timer>{}</timer>\n<counter>{}</counter>\n<timestamp>{}</timestamp>\n"
+    "<sensor_revision_int>0</sensor_revision_int>\n<sample_type>{}</sample_type>\n"
+    "<vid_pid_int>0</vid_pid_int>\n</sample>\n";
+// Reserve hints to avoid reallocations (timestamp ~24, data line ~64, one sample XML ~180).
+constexpr std::size_t kEstimatedSampleXmlBytes = 200u;
+constexpr std::size_t kTrickleBuffReserveAfterSend = 512u;  // room for 2–3 more samples
+/** Fixed size for one <sample> XML (template ~150 chars + timer/counter/timestamp/sample_type). */
+constexpr std::size_t kSampleXmlBufSize = 256u;
+/** Max length of one formatted sample XML (168 literal + 10+10+19+1). */
+constexpr std::size_t kSampleXmlMaxLen = 208u;
+static_assert(kSampleXmlBufSize >= kSampleXmlMaxLen, "sample XML buffer must fit max formatted length");
+/** Extra sample slots so we satisfy rate limit without sending early for buffer full. */
+constexpr std::size_t kTrickleContentHeadroomSamples = 2u;
+/** Longer of the two trickle intervals (min), so buffer fits both normal (20) and debug (10) mode. */
+constexpr int kMaxTrickleIntervalMin = (gmc::TRICKLE_MIN_INTERVAL_MIN >= gmc::TRICKLE_MIN_INTERVAL_MIN_DEBUG)
+    ? gmc::TRICKLE_MIN_INTERVAL_MIN
+    : gmc::TRICKLE_MIN_INTERVAL_MIN_DEBUG;
+/** Max samples in one trickle interval: interval_min * 60 / SAMPLE_INTERVAL_SEC (30s). */
+constexpr int kMaxSamplesInTrickleIntervalRaw = kMaxTrickleIntervalMin * 60 / gmc::SAMPLE_INTERVAL_SEC;
+constexpr std::size_t kMaxSamplesInTrickleInterval =
+    static_cast<std::size_t>(kMaxSamplesInTrickleIntervalRaw > 0 ? kMaxSamplesInTrickleIntervalRaw : 1);
+/** Max trickle content: (samples in interval + headroom) * sample XML size; from gmc:: interval and SAMPLE_INTERVAL_SEC. */
+constexpr std::size_t kMaxTrickleContentBytes =
+    (kMaxSamplesInTrickleInterval + kTrickleContentHeadroomSamples) * kSampleXmlMaxLen;
+constexpr std::size_t kMaxTricklePayloadBytes = kMaxTrickleContentBytes + 1u;  // +1 for null terminator
+}  // namespace
+
 /** Fill struct tm from __time64_t for data.bin field 3 (timestamp). UTC. */
 static void time64_to_tm(__time64_t t64, std::tm* out) {
   if (out == nullptr) return;
@@ -56,7 +89,7 @@ static void time64_to_tm(__time64_t t64, std::tm* out) {
 
 /** Returns data.bin sample_type: "f" first line fresh, "r" resume/long-gap, "n" normal. */
 static const char* get_sample_type(int total_samples_done, int data_bin_line_count,
-                                   unsigned int field1_ms, unsigned int prev_timer_ms) {
+                                   std::uint32_t field1_ms, std::uint32_t prev_timer_ms) {
   if (total_samples_done == 1)
     return (data_bin_line_count > 0 ? "r" : "f");
   if (field1_ms > prev_timer_ms && (field1_ms - prev_timer_ms) > gmc::LONG_GAP_MS)
@@ -64,50 +97,59 @@ static const char* get_sample_type(int total_samples_done, int data_bin_line_cou
   return "n";
 }
 
-/** Application state for the main sampling loop. */
+/** Application state for the main sampling loop. Layout: hot scalars first (fit in few cache lines), then large buffers, then cold. */
 struct main_app_state {
-  char line_buf[gmc::DATA_BIN_LINE_BUF];
-  char resume_token_storage[gmc::RESUME_TOKENS_EXPECTED * gmc::RESUME_TOKEN_SIZE];
-  char* strtok_ptr;
-  int token_count;
-  int config_node;
-  int config_handle;
-  /** Buffered trickle payload: multiple <sample>...</sample> sent in one trickle (like sample program). */
-  std::string trickle_msg_buff;
+  // --- Hot: main-loop scalars + lengths (frequently accessed per sample) ---
   int total_samples_done;
   int data_bin_line_count;
-  bool com_open_ok{false};
-  /** Number of samples currently in trickle_msg_buff. */
+  int num_samples{0};
+  /** Number of samples currently in trickle_msg_buf. */
   int trickle_pending{0};
+  int cpm_value{0};
+  int read_error_count{0};
   bool trickle_sent{false};
+  bool com_open_ok{false};
+  bool data_bin_resumed{false};
+  bool debug_enabled{false};
+  /** Time-weighted counter: sum of (CPM * interval_minutes) per sample. */
+  std::uint32_t counter{0};
+  /** Previous line's timer (ms); used for long-gap sample_type "r". */
+  std::uint32_t prev_timer_ms{0};
+  std::uint32_t sample_interval_sec{0};
+  std::uint32_t elapsed_ticks{0};
+  std::uint32_t time_diff_ms{0};
+  std::uint32_t elapsed_ticks_prev{0};
+  double fraction_done{0};
+  __time64_t time_prev_sample{0};
   __time64_t last_trickle_send_time{0};
   __time64_t time_start{0};
-  double fraction_done{0};
-  void* com_handle{nullptr};
-  bool data_bin_resumed{false};
-  unsigned int elapsed_ticks{0};
+  __time64_t last_sample_time{0};
   __time64_t time_now{0};
-  unsigned int time_diff_ms{0};
-  unsigned int sample_interval_sec{0};
-  bool debug_enabled{false};
-  int num_samples{0};
+  void* com_handle{nullptr};
+  std::size_t trickle_msg_len{0};
+  std::size_t sample_xml_len{0};
+  /** Max content for trickle_msg_buf this run (interval-based); set at loop start. */
+  std::size_t trickle_max_content{kMaxTrickleContentBytes};
+  // --- Large buffers (hot/warm but big; after scalars so first cache lines are dense) ---
+  /** Buffered trickle payload; trickle_msg_len is used length. */
+  std::array<char, kMaxTricklePayloadBytes> trickle_msg_buf{};
+  std::array<char, kSampleXmlBufSize> sample_xml_buf{};
+  int token_count;
+  std::array<char, gmc::DATA_BIN_LINE_BUF> line_buf{};
+  std::array<char, static_cast<std::size_t>(gmc::RESUME_TOKENS_EXPECTED) * gmc::RESUME_TOKEN_SIZE> resume_token_storage{};
+  // --- Cold: config and retry ---
+  int config_node;
+  int config_handle;
   int retry_count_max{0};
   int retry_delay_sec{0};
   int read_error_threshold{0};
-  double cpm_per_sec{0};
-  int cpm_value{0};
-  __time64_t last_sample_time{0};
-  int read_error_count{0};
-  __time64_t time_prev_sample{0};
   double elapsed_sec{0};
   double uSv_h{0};
-  unsigned int elapsed_ticks_prev{0};
-  unsigned short trickle_buf[512];
-  /** Time-weighted counter: sum of (CPM * interval_minutes) per sample. */
-  unsigned int counter{0};
-  /** Previous line's timer (ms); used for long-gap sample_type "r". */
-  unsigned int prev_timer_ms{0};
+  double cpm_per_sec{0};
+  std::array<std::uint16_t, gmc::TRICKLE_BUF_SIZE> trickle_buf{};
 };
+// Keep state on stack under 64K so we stay in safe zone (BOINC / default stack).
+static_assert(sizeof(main_app_state) <= 65536u, "main_app_state must fit in 64K stack budget");
 
 // ---- Init: derived inlines (mainline: init_prefs_and_config) ----
 inline void init_prefs_from_init_data(main_app_state& state) {
@@ -144,16 +186,14 @@ inline void init_prefs_from_init_data(main_app_state& state) {
   } else {
     state.debug_enabled = true;
   }
-  std::ostream* os = get_debug_stream();
-  if (os) {
-    if (g_init_data_len > 0u) {
-      if (runtime_minutes > 0)
-        *os << "Debug: runtime " << runtime_minutes << " min -> num_samples " << state.num_samples << '\n';
-      else
-        *os << "Debug: init_data present but runtime missing or zero, using num_samples " << state.num_samples << '\n';
-    } else {
-      *os << "Debug: no init_data, using default num_samples " << state.num_samples << '\n';
-    }
+  std::ostream& os = get_debug_stream();
+  if (g_init_data_len > 0u) {
+    if (runtime_minutes > 0)
+      os << "Debug: runtime " << runtime_minutes << " min -> num_samples " << state.num_samples << '\n';
+    else
+      os << "Debug: init_data present but runtime missing or zero, using num_samples " << state.num_samples << '\n';
+  } else {
+    os << "Debug: no init_data, using default num_samples " << state.num_samples << '\n';
   }
 }
 
@@ -166,10 +206,8 @@ inline void apply_debug_overrides(main_app_state& state) {
 }
 
 inline void log_startup(const main_app_state& state) {
-  std::ostream* os = get_debug_stream();
-  if (os)
-    *os << "Radioactive@Home app rev ? for GMC-300 starting... num_samples=" << state.num_samples
-        << " (init_data=" << (g_init_data_len > 0u ? "yes" : "no") << ")\n";
+  get_debug_stream() << "Radioactive@Home app rev ? for GMC-300 starting... num_samples=" << state.num_samples
+      << " (init_data=" << (g_init_data_len > 0u ? "yes" : "no") << ")\n";
 }
 
 /** Init: read project preferences (radacdebug, runtime), compute num_samples, load COM settings. */
@@ -184,7 +222,7 @@ inline void init_prefs_and_config(main_app_state& state, gmc_com_settings& com_s
 inline bool load_data_bin_line_count(main_app_state& state) {
   std::ifstream in = open_data_bin_for_resume();
   if (!in.is_open()) return false;
-  while (in.getline(state.line_buf, static_cast<std::streamsize>(gmc::DATA_BIN_LINE_BUF)))
+  while (in.getline(&*state.line_buf.begin(), static_cast<std::streamsize>(state.line_buf.size())))
     state.data_bin_line_count++;
   return true;
 }
@@ -198,25 +236,27 @@ inline void try_almost_done_exit(main_app_state& state) {
       : 0.99;
   boinc_fraction_done(state.fraction_done);
   if (state.debug_enabled) {
-    std::ostream* os = get_debug_stream();
-    if (os)
-      *os << "Found previously created output file, workunit almost completed - exiting\n";
+    get_debug_stream() << "Found previously created output file, workunit almost completed - exiting\n";
   }
   boinc_finish_and_exit(0);
 }
 
 inline void parse_last_line_tokens(main_app_state& state) {
-  char* strtok_context = nullptr;
-  state.strtok_ptr = safe_strtok(state.line_buf, ",\n", &strtok_context);
+  constexpr char delims[] = ",\n";
+  auto line_end = std::find(state.line_buf.begin(), state.line_buf.end(), '\0');
+  auto token_start = state.line_buf.begin();
   state.token_count = 0;
-  while (state.strtok_ptr != nullptr && state.token_count < gmc::RESUME_TOKENS_EXPECTED) {
+  while (token_start != line_end && state.token_count < gmc::RESUME_TOKENS_EXPECTED) {
+    auto delim_it = std::find_first_of(token_start, line_end, std::begin(delims), std::end(delims) - 1);
     state.token_count++;
-    char* dest = state.resume_token_storage + (state.token_count - 1) * gmc::RESUME_TOKEN_SIZE;
-    std::snprintf(dest, gmc::RESUME_TOKEN_SIZE, "%s", state.strtok_ptr);
-    state.strtok_ptr = safe_strtok(nullptr, ",\n", &strtok_context);
+    auto dest_it = state.resume_token_storage.begin() + (state.token_count - 1) * gmc::RESUME_TOKEN_SIZE;
+    std::snprintf(&*dest_it, gmc::RESUME_TOKEN_SIZE, "%.*s",
+                 static_cast<int>(std::distance(token_start, delim_it)), &*token_start);
+    if (delim_it == line_end) break;
+    token_start = std::next(delim_it);
   }
   if (state.token_count >= 1)
-    state.prev_timer_ms = static_cast<unsigned int>(parse_int_cstr(state.resume_token_storage));
+    state.prev_timer_ms = static_cast<std::uint32_t>(parse_int_cstr(&*state.resume_token_storage.begin()));
 }
 
 inline void report_resumed_fraction_done(main_app_state& state) {
@@ -233,10 +273,13 @@ inline void restore_trickle_checkpoint(main_app_state& state) {
   if (std::getline(tc, line1) && std::getline(tc, line2)) {
     __time64_t t = static_cast<__time64_t>(std::strtoll(line1.c_str(), nullptr, 10));
     int p = static_cast<int>(std::strtol(line2.c_str(), nullptr, 10));
-    state.trickle_msg_buff.assign((std::istreambuf_iterator<char>(tc)), std::istreambuf_iterator<char>());
+    tc.read(state.trickle_msg_buf.data(), static_cast<std::streamsize>(kMaxTricklePayloadBytes));
+    state.trickle_msg_len = static_cast<std::size_t>(tc.gcount());
+    if (state.trickle_msg_len > kMaxTrickleContentBytes)
+      state.trickle_msg_len = kMaxTrickleContentBytes;
     if (t >= 0) state.last_trickle_send_time = t;
     if (p >= 0 && p <= 1000) state.trickle_pending = p;
-    else if (!state.trickle_msg_buff.empty()) state.trickle_pending = 1;
+    else if (state.trickle_msg_len > 0) state.trickle_pending = 1;
   }
   tc.close();
   std::remove("trickle_checkpoint.dat");
@@ -270,9 +313,7 @@ inline bool try_one_com_open(main_app_state& state, const gmc_com_settings& com_
     return false;
   }
   if (state.debug_enabled) {
-    std::ostream* os = get_debug_stream();
-    if (os)
-      *os << "COM" << com_settings.port_number << " opened for read/write\n";
+    get_debug_stream() << "COM" << com_settings.port_number << " opened for read/write\n";
   }
   if (init_com_after_open(&state.com_handle, static_cast<int>(state.debug_enabled)) != 0) {
     serial_close(state.com_handle);
@@ -304,21 +345,21 @@ inline bool open_com_until_ready(main_app_state& state, const gmc_com_settings& 
 // ---- Main loop: derived inlines (mainline: run_main_loop) ----
 /** Send pending trickle, close COM, report 100%, exit. Does not return. */
 inline void finish_and_exit_with_trickle(main_app_state& state) {
-  std::ostream* os = get_debug_stream();
-  if (state.trickle_pending > 0 && !state.trickle_msg_buff.empty()) {
-    int ret = boinc_send_trickle_up("rad_report_xml", const_cast<char*>(state.trickle_msg_buff.c_str()));
+  std::ostream& os = get_debug_stream();
+  if (state.trickle_pending > 0 && state.trickle_msg_len > 0) {
+    state.trickle_msg_buf[state.trickle_msg_len] = '\0';
+    int ret = boinc_send_trickle_up("rad_report_xml", state.trickle_msg_buf.data());
     if (ret == 0) {
-      if (os)
-        *os << "trickle sent (on exit) len=" << state.trickle_msg_buff.size() << " samples=" << state.trickle_pending << "\n";
-      state.trickle_msg_buff.clear();
+      os << "trickle sent (on exit) len=" << state.trickle_msg_len << " samples=" << state.trickle_pending << "\n";
+      state.trickle_msg_len = 0;
       state.trickle_pending = 0;
-    } else if (os)
-      *os << "trickle send failed (on exit) ret=" << ret << "\n";
+    } else
+      os << "trickle send failed (on exit) ret=" << ret << "\n";
   }
-  if (state.debug_enabled && os) {
+  if (state.debug_enabled) {
     if (state.total_samples_done == 0)
-      *os << "WARNING: No readings from GM tube !\n";
-    *os << "Done - calling boinc_finish()\n";
+      os << "WARNING: No readings from GM tube !\n";
+    os << "Done - calling boinc_finish()\n";
   }
   if (state.com_handle != nullptr)
     serial_close(state.com_handle);
@@ -359,57 +400,64 @@ inline void write_data_bin_and_trickle(main_app_state& state) {
   state.trickle_buf[0] = trickle_buf_pad;
 
   __time64_t elapsed_sec_from_start = state.time_prev_sample - state.time_start;
-  unsigned int field1_ms = (elapsed_sec_from_start <= 0) ? 0u : static_cast<unsigned int>(elapsed_sec_from_start) * 1000u;
+  std::uint32_t field1_ms = (elapsed_sec_from_start <= 0) ? 0u : static_cast<std::uint32_t>(elapsed_sec_from_start) * 1000u;
   const char* sample_type = get_sample_type(state.total_samples_done, state.data_bin_line_count, field1_ms, state.prev_timer_ms);
   std::tm tm{};
   time64_to_tm(state.time_prev_sample, &tm);
 
-  std::ostream* os = get_debug_stream();
+  std::string ts = std::format(kFmtTimestamp,
+                               tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                               tm.tm_hour, tm.tm_min, tm.tm_sec);
+  std::string data_line = std::format(kFmtDataLine, field1_ms, state.counter, ts, sample_type);
+
+  std::ostream& os = get_debug_stream();
   std::ofstream data_out = open_data_bin_append();
   if (!data_out.is_open()) return;
-  data_out << field1_ms << ',' << state.counter << ','
-           << (tm.tm_year + 1900) << '-' << (tm.tm_mon + 1) << '-' << tm.tm_mday << ' '
-           << tm.tm_hour << ':' << tm.tm_min << ':' << tm.tm_sec << ",0," << sample_type << ",0\n";
-  if (os)
-    *os << field1_ms << ',' << state.counter << ','
-        << (tm.tm_year + 1900) << '-' << (tm.tm_mon + 1) << '-' << tm.tm_mday << ' '
-        << tm.tm_hour << ':' << tm.tm_min << ':' << tm.tm_sec << ",0," << sample_type << ",0\n";
+  data_out << data_line;
+  os << data_line;
   if (state.data_bin_resumed)
     state.data_bin_resumed = false;
   state.prev_timer_ms = field1_ms;
 
-  std::ostringstream sample_os;
-  sample_os << "<sample><timer>" << field1_ms << "</timer>\n"
-    << "<counter>" << state.counter << "</counter>\n"
-    << "<timestamp>" << (tm.tm_year + 1900) << '-' << (tm.tm_mon + 1) << '-' << tm.tm_mday
-    << ' ' << tm.tm_hour << ':' << tm.tm_min << ':' << tm.tm_sec << "</timestamp>\n"
-    << "<sensor_revision_int>0</sensor_revision_int>\n"
-    << "<sample_type>" << sample_type << "</sample_type>\n"
-    << "<vid_pid_int>0</vid_pid_int>\n</sample>\n";
-  std::string sample_str = sample_os.str();
-  if (sample_str.empty()) return;
-  state.trickle_msg_buff.append(sample_str);
-  state.trickle_pending++;
+  auto sample_end = std::format_to(state.sample_xml_buf.begin(), kFmtSampleXml,
+                                  field1_ms, state.counter, ts, sample_type);
+  state.sample_xml_len = static_cast<std::size_t>(std::distance(state.sample_xml_buf.begin(), sample_end));
+  if (state.sample_xml_len == 0) return;
+
   int min_pending = state.debug_enabled ? gmc::TRICKLE_MIN_PENDING_DEBUG : gmc::TRICKLE_MIN_PENDING;
   int min_interval_min = state.debug_enabled ? gmc::TRICKLE_MIN_INTERVAL_MIN_DEBUG : gmc::TRICKLE_MIN_INTERVAL_MIN;
-  int send_now = 0;
+  bool interval_ok = false;
   if (state.trickle_pending > min_pending) {
     __time64_t now = get_time64(nullptr);
     __time64_t elapsed_sec = now - state.last_trickle_send_time;
-    if (elapsed_sec >= 0 && static_cast<double>(elapsed_sec) / 60.0 >= min_interval_min)
-      send_now = 1;
+    interval_ok = (elapsed_sec >= 0 && static_cast<double>(elapsed_sec) / 60.0 >= min_interval_min);
   }
-  if (send_now) {
-    int ret = boinc_send_trickle_up("rad_report_xml", const_cast<char*>(state.trickle_msg_buff.c_str()));
+  // Send when interval elapsed (rate limit) or when buffer would overflow (empty buffer early so we don't drop the new sample).
+  bool buffer_full = (state.trickle_msg_len + state.sample_xml_len > state.trickle_max_content);
+  bool send_now = interval_ok || buffer_full;
+
+  if (send_now && state.trickle_msg_len > 0) {
+    state.trickle_msg_buf[state.trickle_msg_len] = '\0';
+    int ret = boinc_send_trickle_up("rad_report_xml", state.trickle_msg_buf.data());
     if (ret == 0) {
       state.trickle_sent = true;
-      if (os)
-        *os << "trickle sent len=" << state.trickle_msg_buff.size() << " samples=" << state.trickle_pending << "\n";
-      state.trickle_msg_buff.assign(sample_str);
-      state.trickle_pending = 1;
+      os << "trickle sent len=" << state.trickle_msg_len << " samples=" << state.trickle_pending << "\n";
       state.last_trickle_send_time = get_time64(nullptr);
-    } else if (os)
-      *os << "trickle send failed ret=" << ret << "\n";
+    } else
+      os << "trickle send failed ret=" << ret << "\n";
+  }
+  if (send_now) {
+    // Keep the (possibly overflowed) sample for the next trickle; copy whole sample, no clip.
+    std::size_t copy_len = state.sample_xml_len;
+    if (copy_len > state.trickle_max_content)
+      copy_len = state.trickle_max_content;  // defensive: single sample larger than limit
+    std::memcpy(state.trickle_msg_buf.data(), state.sample_xml_buf.data(), copy_len);
+    state.trickle_msg_len = copy_len;
+    state.trickle_pending = 1;
+  } else {
+    std::memcpy(state.trickle_msg_buf.data() + state.trickle_msg_len, state.sample_xml_buf.data(), state.sample_xml_len);
+    state.trickle_msg_len += state.sample_xml_len;
+    state.trickle_pending++;
   }
 }
 
@@ -417,7 +465,7 @@ inline void persist_trickle_checkpoint(main_app_state& state) {
   std::ofstream tc("trickle_checkpoint.dat", std::ios::binary);
   if (tc) {
     tc << state.last_trickle_send_time << '\n' << state.trickle_pending << '\n';
-    tc.write(state.trickle_msg_buff.data(), static_cast<std::streamsize>(state.trickle_msg_buff.size()));
+    tc.write(state.trickle_msg_buf.data(), static_cast<std::streamsize>(state.trickle_msg_len));
     tc.close();
   }
   boinc_checkpoint();
@@ -425,16 +473,15 @@ inline void persist_trickle_checkpoint(main_app_state& state) {
 
 inline void handle_read_error_and_lost_sensor(main_app_state& state) {
   state.read_error_count++;
-  std::ostream* os = state.debug_enabled ? get_debug_stream() : nullptr;
-  if (os)
-    *os << "Error reading data\n";
+  std::ostream& os = get_debug_stream_if(state.debug_enabled);
+  os << "Error reading data\n";
   if (state.read_error_count <= gmc::READ_ERROR_THRESHOLD) return;
-  if (state.trickle_pending > 0 && !state.trickle_msg_buff.empty()) {
-    int ret = boinc_send_trickle_up("rad_report_xml", const_cast<char*>(state.trickle_msg_buff.c_str()));
+  if (state.trickle_pending > 0 && state.trickle_msg_len > 0) {
+    state.trickle_msg_buf[state.trickle_msg_len] = '\0';
+    int ret = boinc_send_trickle_up("rad_report_xml", state.trickle_msg_buf.data());
     if (ret == 0) {
-      if (os)
-        *os << "trickle sent (lost sensor) len=" << state.trickle_msg_buff.size() << " samples=" << state.trickle_pending << "\n";
-      state.trickle_msg_buff.clear();
+      os << "trickle sent (lost sensor) len=" << state.trickle_msg_len << " samples=" << state.trickle_pending << "\n";
+      state.trickle_msg_len = 0;
       state.trickle_pending = 0;
     }
   }
@@ -442,13 +489,12 @@ inline void handle_read_error_and_lost_sensor(main_app_state& state) {
     serial_close(state.com_handle);
   state.com_open_ok = false;
   state.com_handle = nullptr;
-  if (os)
-    *os << "Lost sensor, trying to reopen.... \n";
+  os << "Lost sensor, trying to reopen.... \n";
 }
 
 inline void wait_sample_interval(main_app_state& state, int sample_index) {
   if (sample_index >= state.num_samples) return;
-  for (unsigned int w = 0; w < state.sample_interval_sec && state.sample_interval_sec > 1; ++w) {
+  for (std::uint32_t w = 0; w < state.sample_interval_sec && state.sample_interval_sec > 1; ++w) {
     if (gmc_boinc_should_exit())
       boinc_finish_and_exit(0);
     gmc_boinc_wait_if_suspended();
@@ -470,14 +516,14 @@ inline void do_one_sample_iteration(main_app_state& state, int sample_index, con
   if (read_succeeded) {
     state.time_prev_sample = get_time64(nullptr);
     __time64_t delta_sec = state.time_prev_sample - state.last_sample_time;
-    state.time_diff_ms = (delta_sec <= 0) ? 1000u : static_cast<unsigned int>(delta_sec) * 1000u;
+    state.time_diff_ms = (delta_sec <= 0) ? 1000u : static_cast<std::uint32_t>(delta_sec) * 1000u;
     state.last_sample_time = state.time_prev_sample;
-    state.elapsed_ticks = static_cast<unsigned int>(state.cpm_value);
+    state.elapsed_ticks = static_cast<std::uint32_t>(state.cpm_value);
     state.total_samples_done++;
     state.fraction_done = static_cast<double>(state.data_bin_line_count + state.total_samples_done) / state.num_samples;
     {
       double interval_minutes = static_cast<double>(state.time_diff_ms) / static_cast<double>(gmc::MS_PER_MINUTE);
-      state.counter += static_cast<unsigned int>(std::round(interval_minutes * static_cast<double>(state.elapsed_ticks)));
+      state.counter += static_cast<std::uint32_t>(std::round(interval_minutes * static_cast<double>(state.elapsed_ticks)));
     }
     write_data_bin_and_trickle(state);
     state.elapsed_ticks_prev = state.elapsed_ticks;
@@ -496,6 +542,14 @@ inline void run_main_loop(main_app_state& state, const gmc_com_settings& com_set
   state.time_start = get_time64(nullptr);
   state.last_trickle_send_time = get_time64(nullptr);
   int sample_index = state.data_bin_line_count;
+
+  // Adapt trickle payload limit from sampling interval (30s): samples_in_interval = interval_min*60/SAMPLE_INTERVAL_SEC + headroom.
+  int min_interval_min = state.debug_enabled ? gmc::TRICKLE_MIN_INTERVAL_MIN_DEBUG : gmc::TRICKLE_MIN_INTERVAL_MIN;
+  std::size_t samples_in_interval = static_cast<std::size_t>(min_interval_min * 60 / gmc::SAMPLE_INTERVAL_SEC);
+  if (samples_in_interval < 1u) samples_in_interval = 1u;
+  state.trickle_max_content = (samples_in_interval + kTrickleContentHeadroomSamples) * kSampleXmlMaxLen;
+  if (state.trickle_max_content > kMaxTrickleContentBytes)
+    state.trickle_max_content = kMaxTrickleContentBytes;
 
   for (;;) {
     if (gmc_boinc_should_exit())
@@ -516,7 +570,7 @@ inline void run_main_loop(main_app_state& state, const gmc_com_settings& com_set
 
 void main_app() {
   main_app_state state{};
-  state.sample_interval_sec = static_cast<unsigned int>(gmc::SAMPLE_INTERVAL_SEC);
+  state.sample_interval_sec = static_cast<std::uint32_t>(gmc::SAMPLE_INTERVAL_SEC);
   state.num_samples = gmc::DEFAULT_NUM_SAMPLES;
   state.retry_count_max = gmc::COM_OPEN_RETRY_COUNT;
   state.retry_delay_sec = 20;
@@ -529,9 +583,8 @@ void main_app() {
   init_prefs_and_config(state, com_settings);
   resume_data_bin_and_trickle(state);
   if (!open_com_until_ready(state, com_settings)) {
-    std::ostream* os = get_debug_stream();
-    if (state.debug_enabled && os)
-      *os << "No detector connected (check gmc.xml: COM" << static_cast<unsigned>(com_settings.port_number) << " = port " << com_settings.port_number << ")\n";
+    get_debug_stream_if(state.debug_enabled)
+        << "No detector connected (check gmc.xml: COM" << static_cast<unsigned>(com_settings.port_number) << " = port " << com_settings.port_number << ")\n";
     boinc_finish_and_exit(0);
   }
   run_main_loop(state, com_settings);

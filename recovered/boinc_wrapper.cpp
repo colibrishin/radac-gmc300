@@ -89,8 +89,20 @@ void sleep_one_second(unsigned int sec, int) {
 } // extern "C"
 
 // C++ I/O (app_io.h). BOINC captures stderr as the task log.
-std::ostream* get_debug_stream() {
-  return &std::cerr;
+namespace {
+struct null_streambuf : std::streambuf {
+  int overflow(int c) override { return c; }
+};
+null_streambuf s_null_buf;
+std::ostream s_null_stream(&s_null_buf);
+}  // namespace
+
+std::ostream& get_debug_stream() {
+  return std::cerr;
+}
+
+std::ostream& get_debug_stream_if(bool enabled) {
+  return enabled ? std::cerr : s_null_stream;
 }
 
 std::ifstream open_data_bin_for_resume() {

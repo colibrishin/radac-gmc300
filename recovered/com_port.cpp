@@ -24,8 +24,7 @@ namespace {
   if (h == nullptr) return false;
   int written = serial_write(h, gmc::cmd_getver.data(), gmc::cmd_getver.size());
   if (written != static_cast<int>(gmc::cmd_getver.size())) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_GetVersion(): failed to send <GETVER>> or no device on the other end\n";
+    get_debug_stream() << "gmc_GetVersion(): failed to send <GETVER>> or no device on the other end\n";
     return false;
   }
   std::memset(version_buf, 0, gmc::GETVER_RESPONSE_LEN + 1);
@@ -46,24 +45,22 @@ namespace {
       total = 0;
   }
   if (total != gmc::GETVER_RESPONSE_LEN) {
-    if (std::ostream* os = get_debug_stream()) {
-      *os << "gmc_GetVersion(): read failed (got " << total << " bytes, expected " << gmc::GETVER_RESPONSE_LEN << ")";
-      if (total > 0 && total <= gmc::GETVER_RESPONSE_LEN) {
-        *os << " response: \"";
-        for (std::size_t i = 0; i < total; ++i)
-          *os << (version_buf[i] >= 32 && version_buf[i] < 127 ? version_buf[i] : '?');
-        *os << "\"";
-      }
-      if (total == 0)
-        *os << " (check gmc.xml baud: 57600 for GMC-300 V3, 115200 for Plus V4)";
-      *os << '\n';
+    std::ostream& os = get_debug_stream();
+    os << "gmc_GetVersion(): read failed (got " << total << " bytes, expected " << gmc::GETVER_RESPONSE_LEN << ")";
+    if (total > 0 && total <= gmc::GETVER_RESPONSE_LEN) {
+      os << " response: \"";
+      for (std::size_t i = 0; i < total; ++i)
+        os << (version_buf[i] >= 32 && version_buf[i] < 127 ? version_buf[i] : '?');
+      os << "\"";
     }
+    if (total == 0)
+      os << " (check gmc.xml baud: 57600 for GMC-300 V3, 115200 for Plus V4)";
+    os << '\n';
     return false;
   }
   version_buf[gmc::GETVER_RESPONSE_LEN] = '\0';
   if (debug_enabled) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "<GETVER>> returned " << version_buf << '\n';
+    get_debug_stream() << "<GETVER>> returned " << version_buf << '\n';
   }
   return true;
 }
@@ -75,8 +72,7 @@ namespace {
   int written = serial_write(h, gmc::cmd_heartbeat0.data(), gmc::cmd_heartbeat0.size());
   sleep_one_second(1, 0);
   if (written != static_cast<int>(gmc::cmd_heartbeat0.size())) {
-    if (std::ostream* os = get_debug_stream())
-      *os << "gmc_GetVersion(): failed to send <HEARTBEAT0>> or no device on the other end\n";
+    get_debug_stream() << "gmc_GetVersion(): failed to send <HEARTBEAT0>> or no device on the other end\n";
     return false;
   }
   return true;
