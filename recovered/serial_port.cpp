@@ -27,7 +27,8 @@ std::string build_port_name(unsigned int port_number) {
 #if defined(_WIN32)
   return "\\\\.\\COM" + std::to_string(port_number);
 #elif defined(__linux__)
-  return "/dev/ttyS" + std::to_string(port_number - 1);
+  // port 1 = ttyUSB0, 2 = ttyUSB1, ... (USB serial). Use ttyS0.. for built-in if needed later.
+  return "/dev/ttyUSB" + std::to_string(port_number - 1);
 #elif defined(__APPLE__)
   if (port_number == 1)
     return "/dev/cu.usbserial";
