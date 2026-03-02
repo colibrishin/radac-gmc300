@@ -2,6 +2,7 @@
 // required by main_app.cpp and config.cpp. See docs/extern-symbols.md.
 
 #include "app_io.h"
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -11,6 +12,7 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#include <time.h>  /* nanosleep */
 #endif
 
 // -----------------------------------------------------------------------------
@@ -116,10 +118,15 @@ extern "C" __time64_t get_time64(__time64_t* out) {
 }
 #endif
 
+// Reliable sleep: on POSIX use nanosleep() and re-sleep for remaining time when interrupted by signals
+// (sleep(3) returns early on signal delivery, which can make total wait much shorter on some systems).
 extern "C" void sleep_one_second(unsigned int sec, int) {
 #if defined(_WIN32)
   Sleep(sec * 1000);
 #else
-  sleep(sec);
+  struct timespec req = { static_cast<time_t>(sec), 0 };
+  struct timespec rem = { 0, 0 };
+  while (nanosleep(&req, &rem) == -1 && errno == EINTR)
+    req = rem;
 #endif
 }
