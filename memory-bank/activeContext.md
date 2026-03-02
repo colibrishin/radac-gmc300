@@ -2,16 +2,15 @@
 
 ## Current Work Focus
 
-- **Recovered code** in **recovered/** is refactored and self-contained: **TinyXML2** for config, **platform-agnostic serial** (serial_port.h + serial_port.cpp), **C++20**, **data.bin** write with format matching original GMC300.exe. **Init_data** is read from BOINC and used as-is (no double-wrap); **runtime** and **fraction_done** are validated. **Next:** Optional: **read_detector_sample** return int; BOINC-linked build; tests.
+- **Recovered code** in **recovered/** is refactored and modular: **main_app** is split into four mainline functions (**init_prefs_and_config**, **resume_data_bin_and_trickle**, **open_com_until_ready**, **run_main_loop**) with derived inline helpers. **Trickle** uses buffered multi-sample sends and a **trickle checkpoint file** for resume; **fraction_done** is restored on resume and uses (data_bin_line_count + total_samples_done). **Next:** Optional: **read_detector_sample** return int; tests.
 
 ## Recent Changes
 
-- **Init_data / runtime:** BOINC stores full `<project_preferences>...</project_preferences>` in `aid.project_preferences` (see BOINC `lib/parse.cpp` `dup_element`). **main.cpp** copies this string as-is into `g_init_data_buf`; do **not** wrap again with `build_project_preferences_document()` or `<runtime>` is not found (nested root). See **docs/init_data-culprit.md**.
-- **fraction_done:** Set from `total_samples_done / num_samples` after each completed sample; `boinc_fraction_done(1.0)` called before `boinc_finish_and_exit(0)` so BOINC sees 100% on completion.
-- **Runtime debug:** Startup line includes `num_samples=N (init_data=yes|no)`; when init_data present, separate debug lines for runtime→num_samples or "runtime missing/zero". **main.cpp** (BOINC build) logs init_data parse/availability/size to stderr for diagnostics. Debug/standalone build has `g_init_data_len=0` so no init_data messages.
-- **data.bin format:** One line per sample: time_diff_ms (1000 first line), counter (accumulated CPM), local Y-M-D H:M:S, 0, sample_type "r"/"n", 0. Resume uses 1st token as time_diff_ms.
-- **Timing:** time_diff_ms from (time_prev_sample - last_sample_time); rate uses min 60s; SAMPLE_INTERVAL_SEC = 30 (constants.h). HEARTBEAT0 disabled in init (GETVER often returns 2 bytes).
-- **Config / Serial / C++20:** TinyXML2; serial abstracted; constants.h; app_io.h for debug/data file streams.
+- **main_app structure:** Flow is Init → Resume → COM open → Main loop. Each phase implemented as inline functions; mainline functions call derived helpers (e.g. init_prefs_from_init_data, load_data_bin_line_count, try_one_com_open, finish_and_exit_with_trickle, write_data_bin_and_trickle). Section comments and single-purpose helpers make the flow easy to follow.
+- **Trickle:** Buffered like sample program (radac release-1.77): multiple `<sample>` in one payload; send when pending > 3 (or 2 debug) and ≥ 20 min (or 10 min debug) since last send; keep last sample in buffer after send. **trickle_checkpoint.dat** written at BOINC checkpoint (last_send_time, pending count, buffer); restored on resume so unsent samples and 20-min interval are preserved. Always log "trickle sent len=… samples=…" (or "trickle send failed ret=…") for validation.
+- **fraction_done:** Recovered on resume: report (data_bin_line_count/num_samples) immediately after loading data.bin; when a sample completes use (data_bin_line_count + total_samples_done)/num_samples so progress does not reset to zero after BOINC resume.
+- **Stdio:** get_debug_stream() called at most once per function and result reused; conditional call when debug_enabled only where appropriate.
+- **Init_data / runtime / data.bin / config:** Unchanged; see progress.md and docs.
 
 ## Next Steps
 

@@ -37,7 +37,7 @@ So: **detector → build payload → boinc_send_trickle_up → BOINC client send
 
 The original program passes to **boinc_send_trickle_up("rad_report_xml", xml)**:
 
-- One `<sample>...</sample>` per send. The app may queue samples and send when both conditions in §3.3 are met.
+- One or more `<sample>...</sample>` per send. The **recovered app** buffers multiple samples (like the radac reference) and sends a single payload containing several `<sample>` elements when the conditions in §3.3 are met; after a send it keeps the last sample in the buffer for context. The app may queue samples and send when both conditions in §3.3 are met.
 - **Tags:** `<timer>`, `<counter>`, `<timestamp>`, `<sensor_revision_int>`, `<sample_type>`, `<vid_pid_int>`.
 
 | Field | Meaning |
@@ -57,6 +57,7 @@ Template:
 - Only when **not** in standalone mode.
 - After each sample the payload is queued; a send is attempted when **both**: pending samples ≥ 3 (or 2 in debug), and at least 20 minutes (or 10 in debug) since the last successful send.
 - On exit and on sensor loss (after repeated read errors), any pending buffer is sent once.
+- **Trickle checkpoint (recovered app):** At BOINC checkpoint time (before **boinc_checkpoint_completed**), the app writes **trickle_checkpoint.dat** with last send time, pending count, and the current trickle buffer. On resume (when data.bin exists), it reads this file, restores that state, and deletes the file so unsent samples and the 20‑minute interval are preserved across restarts.
 
 ### 3.4 How the BOINC API writes the trickle
 
@@ -98,7 +99,7 @@ Template:
 
 | Function | Role |
 |----------|------|
-| **main_app** | Top-level flow: config (project_preferences, gmc.xml), COM open, detector loop, trickle send, and data.bin write. |
+| **main_app** | Top-level flow in four phases: init prefs/config → resume data.bin and trickle checkpoint → open COM until ready → main loop (detector, trickle send, data.bin, fraction_done, checkpoint). Trickle state (buffer, last_send_time, pending) is persisted in trickle_checkpoint.dat at BOINC checkpoint and restored on resume. |
 | **boinc_send_trickle_up** | BOINC API: called with variety **"rad_report_xml"** and the XML text; writes to the trickle-up file so the client can send it to the project. |
 | **read_detector_sample** | Sends GETCPM, reads 2-byte big-endian CPM; result is input to payload building. |
 | **Build trickle XML** | **Done.** Inline in main_app.cpp; variety **rad_report_xml**; payload includes &lt;sample&gt;, &lt;timer&gt;, &lt;counter&gt;, &lt;timestamp&gt;, etc. (see docs/boinc-xml-reference.md). |
@@ -108,10 +109,36 @@ Other protocol and config functions (e.g. open_com_port, init_com_after_open, re
 
 ---
 
-## 7. Known Gaps
+## 7. Trickle validation (when server does not see trickle data)
+
+If the server reports that trickle data is not found, validate each step of the chain:
+
+1. **App sends** — The recovered app logs every trickle send to stderr (task log): `trickle sent len=N samples=M` (or `trickle send failed ret=N`). Payloads may contain multiple `<sample>` elements (buffered). If you never see `trickle sent`, the app either did not meet send conditions (pending ≥ 3 and ≥ 20 min since last send, or send on exit with pending &gt; 0) or the BOINC API write failed (non-zero ret).
+2. **File and IPC** — The BOINC API writes **slot_dir/trickle_up.xml** (variety line + payload) and notifies the client via shared memory (`<have_new_trickle_up/>`). The API timer thread sends that notification about once per second.
+3. **Client moves file** — The client must poll the app and, on `<have_new_trickle_up/>`, call **move_trickle_file()** to rename the file from the slot to **project_dir** as `trickle_up_<result_name>_<time>.xml`. Enable **trickle_debug** in `cc_config.xml` so the client logs when it reads and moves trickle files.
+4. **Client sends to server** — On the next scheduler RPC, **read_trickle_files()** scans project_dir for `trickle_up_*`, reads each file, and includes the contents in the scheduler request. Trickles are sent when the client performs an RPC (e.g. need_work or trickle_up reason).
+5. **Server handler** — Confirm the project has a trickle handler registered for variety **rad_report_xml**, that the request body contains `<variety>rad_report_xml</variety>` and `<sample>...</sample>`, and that the handler logs receipt (e.g. "received trickle: variety=rad_report_xml") so you can see whether the request arrived but parsing failed.
+
+**Checking trickle status on the server:** The project exposes trickle data at  
+`http://radioactiveathome.org/boinc/gettrickledata.php?start=X&hostid=Y`  
+Use `start` (e.g. record offset or timestamp) and `hostid` (BOINC host ID) to verify that trickles from a given host have been received and stored.
+
+**Summary:** Check task stderr for `trickle sent` / `trickle send failed`; on the client host enable trickle_debug and confirm `trickle_up_*.xml` appears in the project directory after a run; on the server confirm the handler is invoked and logs incoming trickles, or query gettrickledata.php with hostid to see stored trickles.
+
+---
+
+## 8. Known Gaps
 
 - **Trickle XML and timing** — See §3.2–3.3 and docs/original-program-behaviour.md.
 - **data.bin format** — See docs/original-program-behaviour.md and main_app.cpp (timer, counter, timestamp, 0, sample_type, 0).
+
+---
+
+## 9. Project application sources
+
+Official Radioactive@home application (radac) source releases are announced in the project forum:
+
+- **[Application sources](http://radioactiveathome.org/boinc/forum_thread.php?id=99)** — Forum thread with stable source snapshots (e.g. 1.56 rev 372, 1.64 rev 440, 1.77 rev 585). Use for reference behaviour, sensor support, and XML/trickle format.
 
 ---
 

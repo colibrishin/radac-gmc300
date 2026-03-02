@@ -118,6 +118,7 @@ If the app fails to find the device, check:
 | gmc.xml and init_data layout | [BOINC XML structure reference](boinc-xml-reference.md) |
 | Configuration (comsettings, port, baud) | [Phase 2: Configuration](phase2-config.md) |
 | Official GQ protocol | [GQ-RFC1201](https://www.gqelectronicsllc.com/download/GQ-RFC1201.txt) |
+| Project application sources (radac) | [Application sources](http://radioactiveathome.org/boinc/forum_thread.php?id=99) (Radioactive@home forum) |
 
 ---
 

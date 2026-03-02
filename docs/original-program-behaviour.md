@@ -9,7 +9,7 @@ This document describes the **reference behaviour** of the original GMC300.exe a
 ### Variety and payload
 
 - **Variety:** `rad_report_xml`
-- **Payload:** One `<sample>...</sample>` per send. The program may queue samples and send when both a count and a time condition are met (see below).
+- **Payload:** One or more `<sample>...</sample>` per send. The **recovered app** buffers multiple samples (aligned with the radac reference) and sends one payload containing several `<sample>` elements when the conditions below are met; after a send it keeps the last sample in the buffer. The program may queue samples and send when both a count and a time condition are met (see below).
 
 ### XML structure
 
@@ -27,6 +27,7 @@ This document describes the **reference behaviour** of the original GMC300.exe a
   - Pending samples ≥ 3 (or 2 when debug is enabled), and
   - At least 20 minutes (or 10 in debug) have passed since the last successful send.
 - Pending data is also sent on normal exit and when the sensor is lost (after repeated read errors, before closing the port and retrying).
+- **Trickle checkpoint (recovered app):** At BOINC checkpoint, the app writes **trickle_checkpoint.dat** with last send time, pending count, and the trickle buffer; on resume (when data.bin exists) it restores this state and deletes the file so unsent samples and the send interval are preserved across restarts.
 
 ---
 
@@ -69,7 +70,7 @@ Comma-separated fields:
 
 ## 4. Relationship to recovered code
 
-The recovered app in `recovered/` follows this behaviour where applicable. Some choices differ by design (e.g. sample interval 30 s, runtime formula with buffer and effective seconds per sample so that task wall time matches project runtime). See Phase 4 and Phase 5 docs and `recovered/constants.h` for the current constants and any intentional deviations.
+The recovered app in `recovered/` follows this behaviour where applicable. **main_app** is structured in four phases: init prefs/config → resume data.bin and trickle checkpoint → open COM until ready → main loop (with inline helpers). **fraction_done** is reported immediately on resume as data_bin_line_count/num_samples and during the loop as (data_bin_line_count + total_samples_done)/num_samples. Some choices differ by design (e.g. sample interval 30 s, runtime formula with buffer and effective seconds per sample so that task wall time matches project runtime). See Phase 4 and Phase 5 docs and `recovered/constants.h` for the current constants and any intentional deviations.
 
 ---
 

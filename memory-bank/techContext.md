@@ -19,7 +19,7 @@
 
 ## Recovery / Recompile
 
-- **Recovered code:** C++20, in **recovered/**. **Config:** TinyXML2. **Serial:** Platform-agnostic API; serial_port.cpp (Windows and POSIX). **Constants** (constants.h): SAMPLE_INTERVAL_SEC = 30, DEFAULT_NUM_SAMPLES = 300; runtime (minutes) from init_data → num_samples = (runtime * 60) / SAMPLE_INTERVAL_SEC. CMake at repo root; BOINC or stubs (see recovered/README.md and docs/build.md).
+- **Recovered code:** C++20, in **recovered/**. **Config:** TinyXML2. **Serial:** Platform-agnostic API; serial_port.cpp (Windows and POSIX). **main_app** is organized as four mainline inline functions (init_prefs_and_config, resume_data_bin_and_trickle, open_com_until_ready, run_main_loop) plus derived inline helpers; trickle uses buffered payload and **trickle_checkpoint.dat** for resume. **Constants** (constants.h): SAMPLE_INTERVAL_SEC = 30, trickle min pending/interval; runtime from init_data → num_samples. CMake at repo root; BOINC or stubs (see recovered/README.md and docs/build.md).
 
 ## Dependencies
 
