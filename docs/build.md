@@ -120,7 +120,7 @@ BOINC is built with the **native toolchain** for each platform.
 
 - **Submodules:** Run **`git submodule update --init --recursive`** once from the repo root so **every** submodule path is initialized. On Linux/macOS, CMake does not require **winapi** or **predef** (it only checks them when building on Windows), but initializing all paths is recommended for a consistent repo.
 - **Build:** From repo root, `cmake -B build -S .` then `cmake --build build`. CMake will link **pthread** (via `Threads::Threads`) for Asio on Unix.
-- **Serial port:** Device names are `/dev/ttyS*` on Linux and `/dev/cu.usbserial*` on macOS (see `serial_port.cpp`). Ensure the user has access to the serial device (e.g. add to `dialout` on Linux).
+- **Serial port:** On Linux port 0 → `/dev/ttyUSB0`, 1 → `/dev/ttyUSB1`, etc.; on macOS 0 → `/dev/cu.usbserial`, 1 → `/dev/cu.usbserial-1`. Ensure the user that runs the app has access: add that user to the `dialout` group (e.g. `sudo usermod -aG dialout $USER` for your login; log out and back in). **When running under BOINC**, the client runs as a dedicated user (often `boinc`); add that user to `dialout` so tasks can open the serial device: `sudo usermod -aG dialout boinc` (use the actual BOINC username if different), then restart the BOINC client.
 
 ---
 
