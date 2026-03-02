@@ -24,7 +24,7 @@ const char* build_project_preferences_document(const char* inner_xml, char* out_
 
 // All gmc.xml <comsettings> in one struct (single file read).
 struct gmc_com_settings {
-  int port_number;       // 1-99, required
+  int port_number;       // 0-99, required (0 = first port)
   unsigned int baud;     // default COM_BAUD_DEFAULT
   int bits;              // 5-8, default COM_BITS_DEFAULT
   int parity;            // 0=none, 1=odd, 2=even, default COM_PARITY_DEFAULT

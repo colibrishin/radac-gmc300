@@ -46,7 +46,7 @@ inline constexpr double MIN_ELAPSED_SEC_FOR_RATE = 60.0;
 // Per sample: interval wait + GETCPM_DELAY_BEFORE_SEND + GETCPM_WAIT_AFTER_SEND (actual time per sample ~41s, not 30s).
 inline constexpr int EFFECTIVE_SEC_PER_SAMPLE = SAMPLE_INTERVAL_SEC + GETCPM_DELAY_BEFORE_SEND_SEC + GETCPM_WAIT_AFTER_SEND_SEC;
 inline constexpr int DEFAULT_NUM_SAMPLES = 300;
-inline constexpr int COM_PORT_MIN = 1;
+inline constexpr int COM_PORT_MIN = 0;   // 0-based: 0 = first port (ttyUSB0 on Linux, COM1 on Windows)
 inline constexpr int COM_PORT_MAX = 99;
 inline constexpr unsigned int COM_BAUD_DEFAULT = 57600;
 inline constexpr int COM_BITS_DEFAULT = 8;

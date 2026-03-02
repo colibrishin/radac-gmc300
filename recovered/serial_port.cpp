@@ -25,16 +25,17 @@ struct serial_impl {
 
 std::string build_port_name(unsigned int port_number) {
 #if defined(_WIN32)
-  return "\\\\.\\COM" + std::to_string(port_number);
+  // 0-based: 0 → COM1, 1 → COM2, ...
+  return "\\\\.\\COM" + std::to_string(port_number + 1);
 #elif defined(__linux__)
-  // port 1 = ttyUSB0, 2 = ttyUSB1, ... (USB serial). Use ttyS0.. for built-in if needed later.
-  return "/dev/ttyUSB" + std::to_string(port_number - 1);
+  // 0-based: 0 → ttyUSB0, 1 → ttyUSB1, ...
+  return "/dev/ttyUSB" + std::to_string(port_number);
 #elif defined(__APPLE__)
-  if (port_number == 1)
+  if (port_number == 0)
     return "/dev/cu.usbserial";
-  return "/dev/cu.usbserial-" + std::to_string(port_number - 1);
+  return "/dev/cu.usbserial-" + std::to_string(port_number);
 #else
-  return "/dev/ttyS" + std::to_string(port_number - 1);
+  return "/dev/ttyS" + std::to_string(port_number);
 #endif
 }
 
