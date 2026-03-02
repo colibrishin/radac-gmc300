@@ -29,7 +29,7 @@ jobs:
           - os: windows-latest
             artifact_name: gmc_recovered-windows-x64
             artifact_path: build/gmc_recovered.exe
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             artifact_name: gmc_recovered-linux-x64
             artifact_path: build/gmc_recovered
           - os: macos-14
@@ -47,13 +47,13 @@ jobs:
 
       # --- Linux: build BOINC (autotools) then gmc_recovered with GMC_USE_BOINC=ON ---
       - name: Install dependencies (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake build-essential autoconf automake libtool pkg-config libssl-dev libzip-dev
 
       - name: Build BOINC (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           cd third_party/boinc
           autoreconf -i
@@ -64,7 +64,7 @@ jobs:
           cd ../..
 
       - name: Build gmc_recovered (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DGMC_USE_BOINC=ON
           cmake --build build -j$(nproc)
