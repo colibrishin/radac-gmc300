@@ -40,7 +40,7 @@ inline constexpr unsigned int MS_PER_MINUTE = static_cast<unsigned int>(std::chr
 /** Seconds reserved for startup (COM open, GETVER) so remaining time is for samples only. */
 inline constexpr int RUNTIME_BUFFER_SEC = 120;
 /** Seconds between CPM reads (GETCPM); drives data.bin line rate. */
-inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 30;
+inline constexpr unsigned int SAMPLE_INTERVAL_SEC = 240;
 /** Minimum elapsed seconds for CPM/uSv rate (avoids inflated rate on first sample or short gaps). */
 inline constexpr double MIN_ELAPSED_SEC_FOR_RATE = 60.0;
 // Per sample: interval wait + GETCPM_DELAY_BEFORE_SEND + GETCPM_WAIT_AFTER_SEND (actual time per sample ~41s, not 30s).
@@ -63,8 +63,8 @@ inline constexpr int READ_ATTEMPTS_PER_SAMPLE = 2;
 inline constexpr std::size_t TRICKLE_BUF_SIZE = 512;  // BOINC trickle buffer (state.trickle_buf)
 inline constexpr int TRICKLE_MIN_PENDING = 3;
 inline constexpr int TRICKLE_MIN_PENDING_DEBUG = 2;
-inline constexpr int TRICKLE_MIN_INTERVAL_MIN = 20;   // minutes between trickle sends (normal)
-inline constexpr int TRICKLE_MIN_INTERVAL_MIN_DEBUG = 10;  // minutes (debug)
+inline constexpr int TRICKLE_MIN_INTERVAL_MIN = 10;   // minutes between trickle sends (normal)
+inline constexpr int TRICKLE_MIN_INTERVAL_MIN_DEBUG = 5;  // minutes (debug)
 
 // data.bin: sample_type "r" when gap since previous line exceeds this (ms).
 inline constexpr unsigned int LONG_GAP_MS = SAMPLE_INTERVAL_SEC * 2000u;
