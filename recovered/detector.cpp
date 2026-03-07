@@ -60,11 +60,13 @@ namespace {
 
 } // namespace
 
-void read_detector_sample(void* com_handle, int debug_enabled, int* cpm_out) {
+/** Returns 0 on success, -1 on failure (no device, send/read error). Only then should data.bin and trickle be written. */
+int read_detector_sample(void* com_handle, int debug_enabled, int* cpm_out) {
   if (cpm_out != nullptr) *cpm_out = 0;
-  if (com_handle == nullptr) return;
+  if (com_handle == nullptr) return -1;
   for (int d = 0; d < gmc::GETCPM_DELAY_BEFORE_SEND_SEC; ++d)
     sleep_one_second(1, 0);  /* avoid hammering device */
-  if (!send_getcpm(com_handle)) return;
-  if (!read_cpm_response(com_handle, debug_enabled, cpm_out)) return;
+  if (!send_getcpm(com_handle)) return -1;
+  if (!read_cpm_response(com_handle, debug_enabled, cpm_out)) return -1;
+  return 0;
 }

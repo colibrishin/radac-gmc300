@@ -41,7 +41,7 @@ extern __time64_t get_time64(__time64_t*);
 }
 void open_com_port(const struct gmc_com_settings*, void**);
 int init_com_after_open(void**, int);
-void read_detector_sample(void*, int, int*);
+int read_detector_sample(void*, int, int*);  /* 0 = success, -1 = fail; only write data.bin/trickle on success */
 void debug_dump_com_handle(void**);
 
 namespace {
@@ -509,9 +509,10 @@ inline void do_one_sample_iteration(main_app_state& state, int sample_index, con
   for (int attempt = 0; attempt < gmc::READ_ATTEMPTS_PER_SAMPLE && !read_succeeded; ++attempt) {
     if (attempt > 0)
       sleep_one_second(gmc::GETCPM_RETRY_DELAY_SEC, 0);
-    read_detector_sample(&state.com_handle, static_cast<int>(state.debug_enabled), &state.cpm_value);
-    read_succeeded = true;
-    state.read_error_count = 0;
+    if (read_detector_sample(&state.com_handle, static_cast<int>(state.debug_enabled), &state.cpm_value) == 0) {
+      read_succeeded = true;
+      state.read_error_count = 0;
+    }
   }
   if (read_succeeded) {
     state.time_prev_sample = get_time64(nullptr);
