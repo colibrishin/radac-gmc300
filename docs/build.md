@@ -19,6 +19,26 @@ This document describes how to **build the recovered GMC300 application** (or a 
 
 ## 2. Build with CMake
 
+### 2.1 Windows with Visual Studio
+
+On Windows, if you see **"MinGW Makefiles" / CMAKE_MAKE_PROGRAM not set / CMAKE_CXX_COMPILER not set**, CMake is trying to use MinGW while you want **Visual Studio**. Specify the VS generator and architecture explicitly.
+
+**Standalone (no BOINC):**
+```bat
+cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+```
+Use **`Visual Studio 16 2019`** if you have VS 2019. For 32-bit use `-A Win32` instead of `-A x64`.
+
+**BOINC-linked (with VS-built BOINC libs):**
+```bat
+cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DGMC_USE_BOINC=ON
+cmake --build build --config Release
+```
+Build BOINC first from **`third_party/boinc/win_build/boinc.sln`** (Release, x64); CMake will find **libboinc.lib** and **libboincapi.lib** under `win_build/Build/x64/Release/` or `lib/Release/` when **BOINC_DIR** is set (default: `third_party/boinc`).
+
+---
+
 ### Option A: Standalone (default, for testing)
 
 Uses stubs for all BOINC and wrapper symbols; no BOINC library required.
